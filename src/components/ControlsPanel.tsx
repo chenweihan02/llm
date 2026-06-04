@@ -1,120 +1,144 @@
-import { FlaskConical, RotateCcw, SlidersHorizontal } from "lucide-react";
-import type { Example } from "../types";
+import { Database, FileJson, GitBranch, Layers3, Network } from "lucide-react";
+import type { InferenceTrace, ModelProfile } from "../types";
 
 type ControlsPanelProps = {
-  examples: Example[];
-  inputText: string;
-  temperature: number;
-  topK: number;
-  layer: number;
-  head: number;
-  selectedExampleId: string;
-  onInputChange: (value: string) => void;
-  onExampleSelect: (example: Example) => void;
-  onTemperatureChange: (value: number) => void;
-  onTopKChange: (value: number) => void;
-  onLayerChange: (value: number) => void;
-  onHeadChange: (value: number) => void;
-  onReset: () => void;
+  traces: InferenceTrace[];
+  selectedTraceId: string;
+  selectedTrace: InferenceTrace;
+  selectedLayerIndex: number;
+  selectedDecodeIndex: number;
+  modelProfiles: ModelProfile[];
+  selectedModel: ModelProfile;
+  onTraceSelect: (traceId: string) => void;
+  onLayerChange: (layerIndex: number) => void;
+  onDecodeStepChange: (stepIndex: number) => void;
 };
 
 export function ControlsPanel({
-  examples,
-  inputText,
-  temperature,
-  topK,
-  layer,
-  head,
-  selectedExampleId,
-  onInputChange,
-  onExampleSelect,
-  onTemperatureChange,
-  onTopKChange,
+  traces,
+  selectedTraceId,
+  selectedTrace,
+  selectedLayerIndex,
+  selectedDecodeIndex,
+  modelProfiles,
+  selectedModel,
+  onTraceSelect,
   onLayerChange,
-  onHeadChange,
-  onReset,
+  onDecodeStepChange,
 }: ControlsPanelProps) {
   return (
     <aside className="panel controls-panel">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">Input Bench</span>
-          <h2>实验输入</h2>
+          <span className="eyebrow">Trace Console</span>
+          <h2>推理轨迹</h2>
         </div>
-        <button className="icon-button" onClick={onReset} title="重置输入">
-          <RotateCcw size={18} />
-        </button>
+        <FileJson size={19} />
       </div>
 
-      <div className="example-list">
-        {examples.map((example) => (
-          <button
-            className={`example-button ${
-              example.id === selectedExampleId ? "active" : ""
-            }`}
-            key={example.id}
-            onClick={() => onExampleSelect(example)}
-          >
-            <FlaskConical size={16} />
-            <span>{example.title}</span>
-          </button>
-        ))}
+      <div className="control-block">
+        <div className="control-title">
+          <Database size={16} />
+          <span>Trace 样例</span>
+        </div>
+        <div className="trace-list">
+          {traces.map((trace) => (
+            <button
+              className={`trace-button ${
+                trace.id === selectedTraceId ? "active" : ""
+              }`}
+              key={trace.id}
+              onClick={() => onTraceSelect(trace.id)}
+            >
+              <strong>{trace.title}</strong>
+              <span>{trace.family} · {trace.parameterScale}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <label className="field-label" htmlFor="prompt">
-        Prompt
-      </label>
-      <textarea
-        id="prompt"
-        value={inputText}
-        onChange={(event) => onInputChange(event.target.value)}
-        spellCheck={false}
-      />
+      <div className="prompt-block">
+        <span className="field-label">Prompt</span>
+        <p>{selectedTrace.prompt}</p>
+        <span className="generated-preview">
+          output: {selectedTrace.generatedText}
+        </span>
+      </div>
 
-      <div className="slider-stack">
-        <div className="slider-heading">
-          <SlidersHorizontal size={16} />
-          <span>采样与层设置</span>
+      <div className="control-block">
+        <div className="control-title">
+          <Layers3 size={16} />
+          <span>Layer probe</span>
         </div>
+        <div className="layer-buttons">
+          {selectedTrace.layers.map((layer) => (
+            <button
+              className={`layer-button ${
+                layer.index === selectedLayerIndex ? "active" : ""
+              }`}
+              key={layer.index}
+              onClick={() => onLayerChange(layer.index)}
+            >
+              L{layer.index}
+              <span>{layer.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
-        <RangeControl
-          label="Temperature"
-          min={0.2}
-          max={1.6}
-          step={0.1}
-          value={temperature}
-          onChange={onTemperatureChange}
-        />
-        <RangeControl
-          label="Top-k"
-          min={3}
-          max={8}
-          step={1}
-          value={topK}
-          onChange={onTopKChange}
-        />
-        <RangeControl
-          label="Layer"
-          min={1}
-          max={6}
-          step={1}
-          value={layer}
-          onChange={onLayerChange}
-        />
-        <RangeControl
-          label="Head"
-          min={1}
-          max={4}
-          step={1}
-          value={head}
-          onChange={onHeadChange}
-        />
+      <div className="control-block">
+        <div className="control-title">
+          <GitBranch size={16} />
+          <span>Decode step</span>
+        </div>
+        <div className="decode-list">
+          {selectedTrace.decodeSteps.map((step) => (
+            <button
+              className={`decode-button ${
+                step.index === selectedDecodeIndex ? "active" : ""
+              }`}
+              key={step.index}
+              onClick={() => onDecodeStepChange(step.index)}
+            >
+              <span>{step.phase}</span>
+              <strong>{step.outputToken.text}</strong>
+              <em>pos {step.inputPosition} {"->"} id {step.selectedTokenId}</em>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="model-selector">
+        <div className="control-title">
+          <Network size={16} />
+          <span>模型族对照</span>
+        </div>
+        <div className="selected-model-card">
+          <strong>{selectedModel.label}</strong>
+          <span>{selectedModel.name}</span>
+          <p>{selectedModel.summary}</p>
+        </div>
+        <div className="compact-model-list">
+          {modelProfiles.map((profile) => (
+            <span
+              className={profile.id === selectedModel.id ? "active" : ""}
+              key={profile.id}
+            >
+              {profile.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="source-card">
+        <span>{selectedTrace.source.label}</span>
+        <p>{selectedTrace.source.note}</p>
       </div>
     </aside>
   );
 }
 
-type RangeControlProps = {
+type LegacyRangeControlProps = {
   label: string;
   min: number;
   max: number;
@@ -123,14 +147,14 @@ type RangeControlProps = {
   onChange: (value: number) => void;
 };
 
-function RangeControl({
+export function RangeControl({
   label,
   min,
   max,
   step,
   value,
   onChange,
-}: RangeControlProps) {
+}: LegacyRangeControlProps) {
   return (
     <label className="range-control">
       <span>

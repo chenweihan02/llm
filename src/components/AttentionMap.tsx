@@ -1,36 +1,30 @@
-import type { TokenInfo } from "../types";
+import type { CSSProperties } from "react";
+import type { TraceLayer, TraceToken } from "../types";
 
 type AttentionMapProps = {
-  tokens: TokenInfo[];
-  matrix: number[][];
-  selectedTokenId: number;
-  layer: number;
-  head: number;
-  onSelect: (index: number) => void;
+  tokens: TraceToken[];
+  layer: TraceLayer;
+  selectedTokenPosition: number;
+  onSelect: (position: number) => void;
 };
-
-const maxVisibleTokens = 12;
 
 export function AttentionMap({
   tokens,
-  matrix,
-  selectedTokenId,
   layer,
-  head,
+  selectedTokenPosition,
   onSelect,
 }: AttentionMapProps) {
-  const visibleTokens = tokens.slice(0, maxVisibleTokens);
-  const selected = Math.min(selectedTokenId, visibleTokens.length - 1);
+  const selected = Math.min(selectedTokenPosition, tokens.length - 1);
 
   return (
     <section className="panel attention-panel">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">Step 03</span>
-          <h2>Attention 热力图</h2>
+          <span className="eyebrow">Attention Probe</span>
+          <h2>因果注意力矩阵</h2>
         </div>
         <span className="metric">
-          L{layer} / H{head}
+          L{layer.index} / H{layer.attentionHead}
         </span>
       </div>
 
@@ -38,23 +32,23 @@ export function AttentionMap({
         className="attention-grid"
         style={
           {
-            "--token-count": visibleTokens.length,
-          } as React.CSSProperties
+            "--token-count": tokens.length,
+          } as CSSProperties
         }
       >
         <span className="corner-cell" />
-        {visibleTokens.map((token) => (
-          <span className="axis-token top" key={`top-${token.index}`}>
+        {tokens.map((token) => (
+          <span className="axis-token top" key={`top-${token.position}`}>
             {token.text}
           </span>
         ))}
 
-        {visibleTokens.map((target) => (
+        {tokens.map((target) => (
           <Row
-            key={`row-${target.index}`}
+            key={`row-${target.position}`}
             target={target}
-            tokens={visibleTokens}
-            weights={matrix[target.index] ?? []}
+            tokens={tokens}
+            weights={layer.attention[target.position] ?? []}
             selectedTokenId={selected}
             onSelect={onSelect}
           />
@@ -62,8 +56,8 @@ export function AttentionMap({
       </div>
 
       <AttentionArc
-        tokens={visibleTokens}
-        weights={matrix[selected] ?? []}
+        tokens={tokens}
+        weights={layer.attention[selected] ?? []}
         selected={selected}
       />
     </section>
@@ -71,11 +65,11 @@ export function AttentionMap({
 }
 
 type RowProps = {
-  target: TokenInfo;
-  tokens: TokenInfo[];
+  target: TraceToken;
+  tokens: TraceToken[];
   weights: number[];
   selectedTokenId: number;
-  onSelect: (index: number) => void;
+  onSelect: (position: number) => void;
 };
 
 function Row({ target, tokens, weights, selectedTokenId, onSelect }: RowProps) {
@@ -83,27 +77,27 @@ function Row({ target, tokens, weights, selectedTokenId, onSelect }: RowProps) {
     <>
       <button
         className={`axis-token left ${
-          target.index === selectedTokenId ? "active" : ""
+          target.position === selectedTokenId ? "active" : ""
         }`}
-        onClick={() => onSelect(target.index)}
+        onClick={() => onSelect(target.position)}
       >
         {target.text}
       </button>
       {tokens.map((source) => {
-        const value = weights[source.index] ?? 0;
+        const value = weights[source.position] ?? 0;
         return (
           <button
             className={`heat-cell ${
-              target.index === selectedTokenId || source.index === selectedTokenId
+              target.position === selectedTokenId || source.position === selectedTokenId
                 ? "emphasis"
                 : ""
             }`}
-            key={`${target.index}-${source.index}`}
-            onClick={() => onSelect(target.index)}
+            key={`${target.position}-${source.position}`}
+            onClick={() => onSelect(target.position)}
             style={
               {
                 "--heat": value,
-              } as React.CSSProperties
+              } as CSSProperties
             }
             title={`${target.text} -> ${source.text}: ${Math.round(value * 100)}%`}
           >
@@ -116,7 +110,7 @@ function Row({ target, tokens, weights, selectedTokenId, onSelect }: RowProps) {
 }
 
 type AttentionArcProps = {
-  tokens: TokenInfo[];
+  tokens: TraceToken[];
   weights: number[];
   selected: number;
 };
@@ -134,9 +128,9 @@ function AttentionArc({ tokens, weights, selected }: AttentionArcProps) {
     <div className="arc-wrap">
       <svg viewBox={`0 0 ${width} ${height}`} role="img">
         {tokens.map((token) => {
-          const sourceX = token.index * step + step / 2;
-          const weight = weights[token.index] ?? 0;
-          if (!weight || token.index > selected) return null;
+          const sourceX = token.position * step + step / 2;
+          const weight = weights[token.position] ?? 0;
+          if (!weight || token.position > selected) return null;
 
           const lift = 24 + Math.abs(selectedX - sourceX) * 0.16;
           const path = `M ${sourceX} ${centerY} Q ${
@@ -146,7 +140,7 @@ function AttentionArc({ tokens, weights, selected }: AttentionArcProps) {
           return (
             <path
               d={path}
-              key={`arc-${token.index}`}
+              key={`arc-${token.position}`}
               opacity={0.25 + weight * 2}
               strokeWidth={1 + weight * 10}
             />
@@ -154,9 +148,9 @@ function AttentionArc({ tokens, weights, selected }: AttentionArcProps) {
         })}
         {tokens.map((token) => (
           <g
-            className={token.index === selected ? "arc-token selected" : "arc-token"}
-            key={`label-${token.index}`}
-            transform={`translate(${token.index * step + step / 2}, ${centerY + 14})`}
+            className={token.position === selected ? "arc-token selected" : "arc-token"}
+            key={`label-${token.position}`}
+            transform={`translate(${token.position * step + step / 2}, ${centerY + 14})`}
           >
             <circle r="4" />
             <text y="22">{token.text}</text>

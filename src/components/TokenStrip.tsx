@@ -1,39 +1,43 @@
-import type { TokenInfo } from "../types";
+import type { CSSProperties } from "react";
+import type { TraceToken } from "../types";
 
 type TokenStripProps = {
-  tokens: TokenInfo[];
-  selectedTokenId: number;
-  onSelect: (index: number) => void;
+  tokens: TraceToken[];
+  selectedTokenPosition: number;
+  onSelect: (position: number) => void;
 };
 
 export function TokenStrip({
   tokens,
-  selectedTokenId,
+  selectedTokenPosition,
   onSelect,
 }: TokenStripProps) {
   return (
     <section className="panel token-panel">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">Step 01</span>
-          <h2>Token 流</h2>
+          <span className="eyebrow">Token Stream</span>
+          <h2>输入与生成 token</h2>
         </div>
-        <span className="metric">{tokens.length} tokens</span>
+        <span className="metric">{tokens.length} traced tokens</span>
       </div>
 
       <div className="token-strip">
         {tokens.map((token) => (
           <button
             className={`token-chip ${
-              token.index === selectedTokenId ? "selected" : ""
+              token.position === selectedTokenPosition ? "selected" : ""
             }`}
-            key={`${token.text}-${token.index}`}
-            onClick={() => onSelect(token.index)}
-            style={{ "--token-color": token.color } as React.CSSProperties}
+            key={`${token.id}-${token.position}`}
+            onClick={() => onSelect(token.position)}
+            style={{ "--token-color": token.color } as CSSProperties}
             title={`token id: ${token.id}`}
           >
             <span className="token-text">{token.text}</span>
-            <span className="token-meta">#{token.index}</span>
+            <span className="token-meta">
+              pos {token.position} · id {token.id}
+            </span>
+            <span className={`token-role ${token.role}`}>{token.role}</span>
           </button>
         ))}
       </div>

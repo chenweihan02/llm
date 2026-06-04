@@ -16,9 +16,9 @@ export function TransformerFlow({
       <div className="section-heading">
         <div>
           <span className="eyebrow">Step 02</span>
-          <h2>Transformer 剖面</h2>
+          <h2>推理阶段</h2>
         </div>
-        <span className="metric">教学模拟</span>
+        <span className="metric">decoder-only</span>
       </div>
 
       <div className="stage-track">

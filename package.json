@@ -1,5 +1,6 @@
 {
   "name": "llm",
+  "description": "Interactive LLM inference anatomy trace viewer for decoder-only Transformer internals, KV cache, causal attention, logits, and GPT/LLaMA architecture differences.",
   "private": true,
   "version": "0.0.0",
   "type": "module",

@@ -5,6 +5,7 @@ export function buildAttentionMatrix(
   tokens: TokenInfo[],
   layer: number,
   head: number,
+  modelId: "gpt-style" | "llama-style",
 ): number[][] {
   return tokens.map((target, targetIndex) => {
     const raw = tokens.map((source, sourceIndex) => {
@@ -14,16 +15,32 @@ export function buildAttentionMatrix(
       const locality = 1 / (distance + 1.25);
       const semantic = semanticAffinity(target.text, source.text);
       const kind = target.kind === source.kind ? 0.12 : 0;
+      const modelShape = modelAffinity(modelId, distance, targetIndex, head);
       const headBias =
         (stableHash(`${target.text}-${source.text}-${layer}-${head}`) % 19) /
         100;
 
-      return locality + semantic + kind + headBias;
+      return locality + semantic + kind + modelShape + headBias;
     });
 
     const sum = raw.reduce((total, value) => total + value, 0) || 1;
     return raw.map((value) => Number((value / sum).toFixed(4)));
   });
+}
+
+function modelAffinity(
+  modelId: "gpt-style" | "llama-style",
+  distance: number,
+  targetIndex: number,
+  head: number,
+): number {
+  if (modelId === "llama-style") {
+    const rotaryPhase = Math.abs(Math.cos((distance + 1) / (head + 1)));
+    return rotaryPhase * 0.08 + (distance <= 2 ? 0.08 : 0);
+  }
+
+  const learnedPositionBias = 1 / (targetIndex + 2);
+  return learnedPositionBias * 0.12 + (distance === 0 ? 0.08 : 0);
 }
 
 export function topSources(

@@ -1,11 +1,11 @@
 import {
   Binary,
   BrainCircuit,
-  GitBranch,
   Layers,
   Network,
   Sigma,
   SplitSquareHorizontal,
+  SquareStack,
 } from "lucide-react";
 import type { TransformerStage } from "../types";
 
@@ -13,28 +13,36 @@ export const transformerStages: TransformerStage[] = [
   {
     id: "tokens",
     title: "Token",
-    short: "文本被切成可计算的片段。",
-    detail:
-      "输入文本先被切成 token。token 不是严格的字或词，而是模型词表中的片段。",
+    short: "文本被切成词表片段。",
+    detail: "推理从 tokenizer 开始。模型实际读取的是 token id 序列，而不是原始字符串。",
     formula: "text -> [t0, t1, ...]",
     icon: Binary,
   },
   {
-    id: "embedding",
-    title: "Embedding",
-    short: "token id 映射为向量。",
+    id: "prefill",
+    title: "Prefill",
+    short: "并行处理整段 prompt。",
     detail:
-      "每个 token id 会查表得到一个向量，再和位置信息组合，成为 Transformer 的输入。",
-    formula: "x_i = E[token_i] + P[i]",
+      "prefill 阶段一次性计算 prompt 中所有位置的 hidden states，并为每层建立初始 KV cache。",
+    formula: "X_0 = embed(tokens)",
     icon: Layers,
   },
   {
-    id: "attention",
-    title: "Attention",
-    short: "每个位置选择要关注的上下文。",
+    id: "kvcache",
+    title: "KV Cache",
+    short: "缓存历史 K/V。",
     detail:
-      "注意力层为当前位置分配一组权重，用来聚合前文或上下文中的信息。",
-    formula: "softmax(QK^T / sqrt(d))V",
+      "decode 时不会重复计算整段前文的 key/value，而是读取每层缓存并只为新 token 追加一列。",
+    formula: "cache_l <- concat(cache_l, K_l, V_l)",
+    icon: SquareStack,
+  },
+  {
+    id: "attention",
+    title: "Causal Attention",
+    short: "query 只能看前文。",
+    detail:
+      "自回归推理使用 causal mask。新 token 的 query 与缓存中的 keys 做匹配，再加权读取 values。",
+    formula: "Attn(q_t, K_<=t, V_<=t)",
     icon: Network,
   },
   {
@@ -65,12 +73,12 @@ export const transformerStages: TransformerStage[] = [
     icon: Sigma,
   },
   {
-    id: "rag",
-    title: "RAG",
-    short: "把外部证据放进上下文。",
+    id: "sampling",
+    title: "Sampling",
+    short: "从分布中选下一个 token。",
     detail:
-      "RAG 不是模型内部层，而是把检索到的片段拼进上下文，再交给模型生成。",
-    formula: "query -> retrieve -> context -> answer",
-    icon: GitBranch,
+      "temperature、top-k、top-p 等策略作用在 logits 或概率分布上，最终决定追加哪个 token。",
+    formula: "next = sample(softmax(logits / T))",
+    icon: BrainCircuit,
   },
 ];

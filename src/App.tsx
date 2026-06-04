@@ -1,78 +1,83 @@
 import { useEffect, useMemo, useState } from "react";
-import { Brain, Code2, Sparkles } from "lucide-react";
+import { Brain, Code2, Cpu } from "lucide-react";
 import { AttentionMap } from "./components/AttentionMap";
+import { ArchitectureDiagram } from "./components/ArchitectureDiagram";
 import { ControlsPanel } from "./components/ControlsPanel";
 import { InspectorPanel } from "./components/InspectorPanel";
 import { PredictionPanel } from "./components/PredictionPanel";
 import { TokenStrip } from "./components/TokenStrip";
-import { TransformerFlow } from "./components/TransformerFlow";
-import { examples, defaultInput } from "./data/examples";
-import { transformerStages } from "./data/stages";
-import { buildAttentionMatrix, topSources } from "./engines/attention";
-import { predictNext, samplePrediction } from "./engines/sampler";
-import { tokenize } from "./engines/tokenizer";
+import { modelProfiles } from "./data/modelProfiles";
+import { traces } from "./data/traces";
+import type { StageId } from "./types";
 import "./style.css";
 
 export default function App() {
-  const [inputText, setInputText] = useState(defaultInput);
-  const [selectedExampleId, setSelectedExampleId] = useState(examples[0].id);
-  const [selectedTokenId, setSelectedTokenId] = useState(0);
-  const [activeStageId, setActiveStageId] = useState("attention");
-  const [temperature, setTemperature] = useState(0.8);
-  const [topK, setTopK] = useState(5);
-  const [layer, setLayer] = useState(3);
-  const [head, setHead] = useState(2);
-  const [generatedTokens, setGeneratedTokens] = useState<string[]>([]);
-
-  const fullText = `${inputText}${generatedTokens.join("")}`;
-  const tokens = useMemo(() => tokenize(fullText), [fullText]);
-  const matrix = useMemo(
-    () => buildAttentionMatrix(tokens, layer, head),
-    [tokens, layer, head],
+  const [selectedTraceId, setSelectedTraceId] = useState(traces[0].id);
+  const [selectedLayerIndex, setSelectedLayerIndex] = useState(
+    traces[0].layers[1]?.index ?? traces[0].layers[0].index,
   );
-  const predictions = useMemo(
-    () => predictNext(tokens, temperature, topK),
-    [tokens, temperature, topK],
+  const [selectedTokenPosition, setSelectedTokenPosition] = useState(
+    traces[0].decodeSteps[0].inputPosition,
   );
+  const [activeStageId, setActiveStageId] = useState<StageId>("attention");
+  const [selectedDecodeIndex, setSelectedDecodeIndex] = useState(0);
 
-  const selectedToken = tokens[selectedTokenId] ?? tokens[0];
+  const selectedTrace =
+    traces.find((trace) => trace.id === selectedTraceId) ?? traces[0];
+  const selectedLayer =
+    selectedTrace.layers.find((layer) => layer.index === selectedLayerIndex) ??
+    selectedTrace.layers[0];
+  const selectedToken =
+    selectedTrace.tokens.find((token) => token.position === selectedTokenPosition) ??
+    selectedTrace.tokens[0];
   const activeStage =
-    transformerStages.find((stage) => stage.id === activeStageId) ??
-    transformerStages[0];
-  const selectedExample =
-    examples.find((example) => example.id === selectedExampleId) ?? examples[0];
-  const sources = selectedToken
-    ? topSources(tokens, matrix, selectedToken.index)
-    : [];
+    selectedTrace.stages.find((stage) => stage.id === activeStageId) ??
+    selectedTrace.stages[0];
+  const selectedDecodeStep =
+    selectedTrace.decodeSteps[selectedDecodeIndex] ?? selectedTrace.decodeSteps[0];
+  const selectedModel =
+    modelProfiles.find((profile) => profile.id === selectedTrace.modelProfileId) ??
+    modelProfiles[0];
+  const attentionSources = useMemo(() => {
+    const row = selectedLayer.attention[selectedToken.position] ?? [];
+    return selectedTrace.tokens
+      .map((token) => ({
+        token,
+        weight: row[token.position] ?? 0,
+      }))
+      .filter((source) => source.weight > 0)
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 5);
+  }, [selectedLayer, selectedToken.position, selectedTrace.tokens]);
 
   useEffect(() => {
-    if (selectedTokenId >= tokens.length) {
-      setSelectedTokenId(Math.max(0, tokens.length - 1));
+    if (!selectedTrace.layers.some((layer) => layer.index === selectedLayerIndex)) {
+      setSelectedLayerIndex(selectedTrace.layers[0].index);
     }
-  }, [selectedTokenId, tokens.length]);
+    if (!selectedTrace.tokens.some((token) => token.position === selectedTokenPosition)) {
+      setSelectedTokenPosition(selectedTrace.decodeSteps[0].inputPosition);
+    }
+    if (!selectedTrace.stages.some((stage) => stage.id === activeStageId)) {
+      setActiveStageId("attention");
+    }
+    if (!selectedTrace.decodeSteps[selectedDecodeIndex]) {
+      setSelectedDecodeIndex(0);
+    }
+  }, [
+    activeStageId,
+    selectedDecodeIndex,
+    selectedLayerIndex,
+    selectedTokenPosition,
+    selectedTrace,
+  ]);
 
-  function selectExample(exampleId: string) {
-    const example = examples.find((item) => item.id === exampleId) ?? examples[0];
-    setSelectedExampleId(example.id);
-    setInputText(example.input);
-    setGeneratedTokens([]);
-    setSelectedTokenId(0);
-  }
-
-  function resetInput() {
-    selectExample(examples[0].id);
-    setTemperature(0.8);
-    setTopK(5);
-    setLayer(3);
-    setHead(2);
+  function selectTrace(traceId: string) {
+    const nextTrace = traces.find((trace) => trace.id === traceId) ?? traces[0];
+    setSelectedTraceId(nextTrace.id);
+    setSelectedLayerIndex(nextTrace.layers[1]?.index ?? nextTrace.layers[0].index);
+    setSelectedTokenPosition(nextTrace.decodeSteps[0].inputPosition);
+    setSelectedDecodeIndex(0);
     setActiveStageId("attention");
-  }
-
-  function generateStep() {
-    const next = samplePrediction(predictions);
-    if (!next) return;
-    setGeneratedTokens((current) => [...current, next].slice(-18));
-    setSelectedTokenId(tokens.length);
   }
 
   return (
@@ -83,18 +88,18 @@ export default function App() {
             <Brain size={22} />
           </span>
           <div>
-            <p>LLM Dissection Lab</p>
-            <h1>大模型可视化拆解实验室</h1>
+            <p>LLM Inference Anatomy</p>
+            <h1>大模型推理解剖台</h1>
           </div>
         </div>
         <div className="topbar-actions">
           <span className="status-pill">
-            <Sparkles size={15} />
-            Phase 1
+            <Cpu size={15} />
+            Trace driven
           </span>
           <a
             className="github-link"
-            href="https://github.com/"
+            href="https://github.com/chenweihan02/llm"
             target="_blank"
             rel="noreferrer"
             title="GitHub"
@@ -106,63 +111,55 @@ export default function App() {
 
       <div className="workspace">
         <ControlsPanel
-          examples={examples}
-          inputText={inputText}
-          temperature={temperature}
-          topK={topK}
-          layer={layer}
-          head={head}
-          selectedExampleId={selectedExampleId}
-          onInputChange={(value) => {
-            setInputText(value);
-            setGeneratedTokens([]);
-            setSelectedTokenId(0);
-          }}
-          onExampleSelect={(example) => selectExample(example.id)}
-          onTemperatureChange={setTemperature}
-          onTopKChange={setTopK}
-          onLayerChange={setLayer}
-          onHeadChange={setHead}
-          onReset={resetInput}
+          traces={traces}
+          selectedTraceId={selectedTrace.id}
+          selectedTrace={selectedTrace}
+          selectedLayerIndex={selectedLayer.index}
+          selectedDecodeIndex={selectedDecodeIndex}
+          modelProfiles={modelProfiles}
+          selectedModel={selectedModel}
+          onTraceSelect={selectTrace}
+          onLayerChange={setSelectedLayerIndex}
+          onDecodeStepChange={setSelectedDecodeIndex}
         />
 
         <div className="main-lab">
-          <TokenStrip
-            tokens={tokens}
-            selectedTokenId={selectedTokenId}
-            onSelect={setSelectedTokenId}
-          />
-          <TransformerFlow
-            stages={transformerStages}
+          <ArchitectureDiagram
+            trace={selectedTrace}
+            layer={selectedLayer}
+            decodeStep={selectedDecodeStep}
+            selectedToken={selectedToken}
             activeStageId={activeStageId}
-            onSelect={setActiveStageId}
+            onSelectStage={setActiveStageId}
+          />
+          <TokenStrip
+            tokens={selectedTrace.tokens}
+            selectedTokenPosition={selectedToken.position}
+            onSelect={setSelectedTokenPosition}
           />
           <div className="visual-grid">
             <AttentionMap
-              tokens={tokens}
-              matrix={matrix}
-              selectedTokenId={selectedTokenId}
-              layer={layer}
-              head={head}
-              onSelect={setSelectedTokenId}
+              tokens={selectedTrace.tokens}
+              layer={selectedLayer}
+              selectedTokenPosition={selectedToken.position}
+              onSelect={setSelectedTokenPosition}
             />
             <PredictionPanel
-              predictions={predictions}
-              generatedTokens={generatedTokens}
-              onGenerate={generateStep}
-              onClear={() => {
-                setGeneratedTokens([]);
-                setSelectedTokenId(0);
-              }}
+              decodeSteps={selectedTrace.decodeSteps}
+              selectedDecodeIndex={selectedDecodeIndex}
+              onSelectDecodeStep={setSelectedDecodeIndex}
             />
           </div>
         </div>
 
         <InspectorPanel
-          token={selectedToken}
+          trace={selectedTrace}
           stage={activeStage}
-          sources={sources}
-          focus={selectedExample.focus}
+          token={selectedToken}
+          layer={selectedLayer}
+          decodeStep={selectedDecodeStep}
+          sources={attentionSources}
+          profile={selectedModel}
         />
       </div>
     </main>
