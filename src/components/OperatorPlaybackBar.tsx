@@ -19,6 +19,7 @@ type OperatorPlaybackBarProps = {
   isPlaying: boolean;
   onSelectOperator: (operatorIndex: number) => void;
   onPlayingChange: (isPlaying: boolean) => void;
+  variant?: "default" | "sidebar";
 };
 
 export function OperatorPlaybackBar({
@@ -27,6 +28,7 @@ export function OperatorPlaybackBar({
   isPlaying,
   onSelectOperator,
   onPlayingChange,
+  variant = "default",
 }: OperatorPlaybackBarProps) {
   const boundedIndex = clampOperatorIndex(selectedOperatorIndex, layer.operators);
   const selectedOperator = layer.operators[boundedIndex];
@@ -43,7 +45,7 @@ export function OperatorPlaybackBar({
   }
 
   return (
-    <div className="architecture-playback">
+    <div className={`architecture-playback playback-${variant}`}>
       <div className="architecture-playback-main">
         <div className="playback-controls">
           <button

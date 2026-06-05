@@ -1,10 +1,10 @@
-# LLM Inference Anatomy
+# 大模型推理可视化
 
-桌面版大模型推理解剖台：用 trace 数据可视化 tokenization、prefill、KV cache、causal attention、residual stream、MLP、logits 与 next-token selection。
+桌面版大模型推理可视化：用 trace 数据可视化 tokenization、prefill、KV cache、causal attention、residual stream、MLP、logits 与 next-token selection。
 
 ## GitHub Repository Description
 
-Interactive LLM inference anatomy trace viewer for decoder-only Transformer internals: tokens, prefill, KV cache, causal attention, residual stream, MLP, logits, and GPT/LLaMA architecture differences.
+Interactive LLM inference visualization trace viewer for decoder-only Transformer internals: tokens, prefill, KV cache, causal attention, residual stream, MLP, logits, and GPT/LLaMA architecture differences.
 
 ## 当前阶段
 

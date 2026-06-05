@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Brain, Code2, Cpu } from "lucide-react";
 import { AttentionMap } from "./components/AttentionMap";
 import { ArchitectureDiagram } from "./components/ArchitectureDiagram";
 import { ControlsPanel } from "./components/ControlsPanel";
@@ -133,43 +132,21 @@ export default function App() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand-mark">
-            <Brain size={22} />
-          </span>
-          <div>
-            <p>LLM Inference Anatomy</p>
-            <h1>大模型推理解剖台</h1>
-          </div>
-        </div>
-        <div className="topbar-actions">
-          <span className="status-pill">
-            <Cpu size={15} />
-            Trace driven
-          </span>
-          <a
-            className="github-link"
-            href="https://github.com/chenweihan02/llm"
-            target="_blank"
-            rel="noreferrer"
-            title="GitHub"
-          >
-            <Code2 size={18} />
-          </a>
-        </div>
-      </header>
-
       <div className="workspace">
         <ControlsPanel
           traces={traces}
           selectedTraceId={selectedTrace.id}
           selectedTrace={selectedTrace}
+          selectedLayer={selectedLayer}
           selectedLayerIndex={selectedLayer.index}
           selectedDecodeIndex={selectedDecodeIndex}
+          selectedOperatorIndex={selectedOperatorIndex}
+          isOperatorPlaying={isOperatorPlaying}
           onTraceSelect={selectTrace}
           onLayerChange={setSelectedLayerIndex}
           onDecodeStepChange={setSelectedDecodeIndex}
+          onSelectOperator={selectOperator}
+          onPlayingChange={setIsOperatorPlaying}
         />
 
         <div className="main-lab">
@@ -180,10 +157,7 @@ export default function App() {
             selectedToken={selectedToken}
             activeStageId={activeStageId}
             selectedOperatorIndex={selectedOperatorIndex}
-            isOperatorPlaying={isOperatorPlaying}
             onSelectStage={setActiveStageId}
-            onSelectOperator={selectOperator}
-            onPlayingChange={setIsOperatorPlaying}
           />
           <OperatorDebugger
             layer={selectedLayer}

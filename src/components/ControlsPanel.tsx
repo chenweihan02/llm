@@ -1,33 +1,44 @@
 import { Database, FileJson, GitBranch, Layers3 } from "lucide-react";
-import type { InferenceTrace } from "../types";
+import type { InferenceTrace, TraceLayer } from "../types";
+import { OperatorPlaybackBar } from "./OperatorPlaybackBar";
 
 type ControlsPanelProps = {
   traces: InferenceTrace[];
   selectedTraceId: string;
   selectedTrace: InferenceTrace;
+  selectedLayer: TraceLayer;
   selectedLayerIndex: number;
   selectedDecodeIndex: number;
+  selectedOperatorIndex: number;
+  isOperatorPlaying: boolean;
   onTraceSelect: (traceId: string) => void;
   onLayerChange: (layerIndex: number) => void;
   onDecodeStepChange: (stepIndex: number) => void;
+  onSelectOperator: (operatorIndex: number) => void;
+  onPlayingChange: (isPlaying: boolean) => void;
 };
 
 export function ControlsPanel({
   traces,
   selectedTraceId,
   selectedTrace,
+  selectedLayer,
   selectedLayerIndex,
   selectedDecodeIndex,
+  selectedOperatorIndex,
+  isOperatorPlaying,
   onTraceSelect,
   onLayerChange,
   onDecodeStepChange,
+  onSelectOperator,
+  onPlayingChange,
 }: ControlsPanelProps) {
   return (
     <aside className="panel controls-panel compact-controls-panel">
       <div className="panel-heading">
         <div>
-          <span className="eyebrow">Trace Console</span>
-          <h2>轨迹控制</h2>
+          <span className="eyebrow">LLM Inference</span>
+          <h2>大模型推理可视化</h2>
         </div>
         <FileJson size={19} />
       </div>
@@ -98,6 +109,15 @@ export function ControlsPanel({
           ))}
         </div>
       </div>
+
+      <OperatorPlaybackBar
+        layer={selectedLayer}
+        selectedOperatorIndex={selectedOperatorIndex}
+        isPlaying={isOperatorPlaying}
+        onSelectOperator={onSelectOperator}
+        onPlayingChange={onPlayingChange}
+        variant="sidebar"
+      />
 
       <details className="trace-context-details">
         <summary>Prompt / source</summary>

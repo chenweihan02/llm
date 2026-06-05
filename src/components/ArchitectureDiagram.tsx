@@ -6,7 +6,6 @@ import type {
   TraceToken,
 } from "../types";
 import { MathFormula } from "./MathFormula";
-import { OperatorPlaybackBar } from "./OperatorPlaybackBar";
 
 type ArchitectureDiagramProps = {
   trace: InferenceTrace;
@@ -15,10 +14,7 @@ type ArchitectureDiagramProps = {
   selectedToken: TraceToken;
   activeStageId: StageId;
   selectedOperatorIndex: number;
-  isOperatorPlaying: boolean;
   onSelectStage: (stageId: StageId) => void;
-  onSelectOperator: (operatorIndex: number) => void;
-  onPlayingChange: (isPlaying: boolean) => void;
 };
 
 type NodeTone = "token" | "norm" | "attention" | "mlp" | "output" | "cache";
@@ -41,10 +37,7 @@ export function ArchitectureDiagram({
   selectedToken,
   activeStageId,
   selectedOperatorIndex,
-  isOperatorPlaying,
   onSelectStage,
-  onSelectOperator,
-  onPlayingChange,
 }: ArchitectureDiagramProps) {
   const stageById = new Map(trace.stages.map((stage) => [stage.id, stage]));
   const isLlama = trace.modelProfileId === "llama-style";
@@ -53,6 +46,8 @@ export function ArchitectureDiagram({
   const mlpLabel = isLlama ? "SwiGLU Feed Forward" : "GELU Feed Forward";
   const attentionLabel = "Masked Multi-Head Attention";
   const activeStage = stageById.get(activeStageId) ?? trace.stages[0];
+  const selectedOperator = layer.operators[selectedOperatorIndex];
+  const selectedOperatorId = selectedOperator?.id ?? "";
 
   const nodes: NodeSpec[] = [
     {
@@ -156,23 +151,13 @@ export function ArchitectureDiagram({
       tone: "output",
     },
     {
-      id: "qkv",
-      label: "Q/K/V projections",
-      detail: formatShape(layer.kvCache.keyShape),
-      x: 780,
-      y: 514,
-      w: 205,
-      h: 64,
-      tone: "cache",
-    },
-    {
       id: "kvcache",
       label: "KV Cache",
-      detail: `${decodeStep.kvCache.memoryMB.toFixed(2)} MB / layer`,
-      x: 785,
-      y: 405,
-      w: 195,
-      h: 58,
+      detail: `${formatShape(layer.kvCache.keyShape)} / ${decodeStep.kvCache.memoryMB.toFixed(2)} MB`,
+      x: 805,
+      y: 242,
+      w: 230,
+      h: 48,
       tone: "cache",
     },
   ];
@@ -181,7 +166,7 @@ export function ArchitectureDiagram({
     <section className="panel architecture-panel">
       <div className="section-heading">
         <div>
-          <span className="eyebrow">Transformer Anatomy</span>
+          <span className="eyebrow">Transformer Flow</span>
           <h2>Decoder-only Transformer 架构</h2>
         </div>
         <span className="metric">
@@ -190,14 +175,6 @@ export function ArchitectureDiagram({
       </div>
 
       <div className="diagram-workbench">
-        <OperatorPlaybackBar
-          layer={layer}
-          selectedOperatorIndex={selectedOperatorIndex}
-          isPlaying={isOperatorPlaying}
-          onSelectOperator={onSelectOperator}
-          onPlayingChange={onPlayingChange}
-        />
-
         <svg
           className="transformer-schematic transformer-schematic-tall"
           viewBox="0 0 1120 860"
@@ -237,14 +214,34 @@ export function ArchitectureDiagram({
           <path className="flow-line main-flow" d="M560 118 L560 90" />
 
           <path className="flow-line side-flow" d="M370 744 L420 744" />
-          <path className="flow-line cache-flow" d="M675 648 C750 631 755 554 780 546" />
-          <path className="flow-line cache-flow" d="M780 546 L715 546" />
-          <path className="flow-line cache-flow" d="M882 514 L882 463" />
-          <path className="flow-line cache-flow reverse-flow" d="M785 434 C748 458 750 526 715 536" />
+          <path className="flow-line cache-flow" d="M715 542 C748 504 744 324 812 274" />
+          <path className="flow-line cache-flow reverse-flow" d="M912 288 C790 318 744 486 715 536" />
 
-          <path className="residual-loop" d="M445 648 C280 648 280 438 445 438" />
-          <path className="residual-loop" d="M675 438 C820 438 820 238 675 238" />
-          <path className="residual-loop residual-loop-soft" d="M695 339 C790 339 790 238 675 238" />
+          <g className={`residual-network ${activeStageId === "residual" ? "residual-active" : ""}`}>
+            <path className="residual-bypass" d="M560 696 H386 Q378 696 378 688 V494 Q378 486 386 486 H548" />
+            <path className="residual-bypass" d="M560 392 H744 Q752 392 752 384 V294 Q752 286 744 286 H572" />
+          </g>
+
+          <path className="detail-leader" d="M715 525 L760 344" />
+          <path className="detail-leader" d="M715 572 L760 624" />
+          <path className="detail-leader" d="M425 326 L345 280" />
+          <path className="detail-leader" d="M425 358 L345 444" />
+
+          <MlpDetailPanel
+            activeStageId={activeStageId}
+            isLlama={isLlama}
+            onSelectStage={onSelectStage}
+            selectedOperatorId={selectedOperatorId}
+          />
+
+          <AttentionDetailPanel
+            activeStageId={activeStageId}
+            cacheShape={formatShape(layer.kvCache.keyShape)}
+            cacheSize={`${decodeStep.kvCache.memoryMB.toFixed(2)} MB`}
+            isLlama={isLlama}
+            onSelectStage={onSelectStage}
+            selectedOperatorId={selectedOperatorId}
+          />
 
           {nodes.map((node, index) => (
             <DiagramNode
@@ -254,6 +251,13 @@ export function ArchitectureDiagram({
               onSelect={onSelectStage}
             />
           ))}
+
+          <g className={`residual-network residual-ports ${activeStageId === "residual" ? "residual-active" : ""}`}>
+            <ResidualBranchPort x={560} y={696} />
+            <ResidualMergePort x={560} y={486} />
+            <ResidualBranchPort x={560} y={392} />
+            <ResidualMergePort x={560} y={286} />
+          </g>
 
         </svg>
 
@@ -281,6 +285,20 @@ export function ArchitectureDiagram({
         </div>
       </div>
     </section>
+  );
+}
+
+function ResidualBranchPort({ x, y }: { x: number; y: number }) {
+  return <circle className="residual-branch-port" cx={x} cy={y} r="5.5" />;
+}
+
+function ResidualMergePort({ x, y }: { x: number; y: number }) {
+  return (
+    <g className="residual-merge-port">
+      <circle cx={x} cy={y} r="11" />
+      <path d={`M${x - 5} ${y} L${x + 5} ${y}`} />
+      <path d={`M${x} ${y - 5} L${x} ${y + 5}`} />
+    </g>
   );
 }
 
@@ -329,4 +347,276 @@ function DiagramNode({ node, selected, onSelect }: DiagramNodeProps) {
 
 function formatShape(shape: number[]) {
   return `[${shape.join(", ")}]`;
+}
+
+type DetailStepSpec = {
+  label: string;
+  detail: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  stageId: StageId;
+  operatorMatches: string[];
+};
+
+type DetailPanelProps = {
+  activeStageId: StageId;
+  isLlama: boolean;
+  onSelectStage: (stageId: StageId) => void;
+  selectedOperatorId: string;
+};
+
+function AttentionDetailPanel({
+  activeStageId,
+  cacheShape,
+  cacheSize,
+  isLlama,
+  onSelectStage,
+  selectedOperatorId,
+}: DetailPanelProps & { cacheShape: string; cacheSize: string }) {
+  const steps: DetailStepSpec[] = [
+    {
+      label: isLlama ? "RMSNorm" : "LayerNorm",
+      detail: "pre-attn",
+      x: 790,
+      y: 360,
+      w: 100,
+      h: 42,
+      stageId: "residual",
+      operatorMatches: ["rms-attn", "ln-attn"],
+    },
+    {
+      label: isLlama ? "Q + K/V" : "Q/K/V",
+      detail: isLlama ? "GQA proj" : "linear proj",
+      x: 925,
+      y: 360,
+      w: 106,
+      h: 42,
+      stageId: "qkv",
+      operatorMatches: ["q-proj", "kv-proj", "qkv-proj"],
+    },
+    {
+      label: isLlama ? "RoPE" : "KV write",
+      detail: isLlama ? "rotate Q/K" : cacheSize,
+      x: 925,
+      y: 420,
+      w: 106,
+      h: 42,
+      stageId: isLlama ? "position" : "kvcache",
+      operatorMatches: isLlama ? ["rope"] : ["kv-write"],
+    },
+    {
+      label: "Score",
+      detail: "scaled matmul",
+      x: 790,
+      y: 440,
+      w: 100,
+      h: 42,
+      stageId: "attention",
+      operatorMatches: ["qk-score"],
+    },
+    {
+      label: "Mask",
+      detail: "causal",
+      x: 925,
+      y: 480,
+      w: 106,
+      h: 42,
+      stageId: "attention",
+      operatorMatches: ["causal-mask"],
+    },
+    {
+      label: "Softmax",
+      detail: "weights",
+      x: 790,
+      y: 520,
+      w: 100,
+      h: 42,
+      stageId: "attention",
+      operatorMatches: ["attn-softmax"],
+    },
+    {
+      label: "Value read",
+      detail: "A x V",
+      x: 925,
+      y: 540,
+      w: 106,
+      h: 42,
+      stageId: "attention",
+      operatorMatches: ["value-read"],
+    },
+    {
+      label: "Output proj",
+      detail: "W_o writeback",
+      x: 855,
+      y: 616,
+      w: 118,
+      h: 42,
+      stageId: "attention",
+      operatorMatches: ["attn-out", "residual-attn"],
+    },
+  ];
+
+  return (
+    <g className="detail-panel attention-detail-panel">
+      <rect className="detail-panel-frame" x="760" y="300" width="300" height="376" rx="14" />
+      <text className="detail-panel-title" x="785" y="326">
+        Attention internals
+      </text>
+      <g className="kv-cache-badge">
+        <rect x="912" y="310" width="126" height="34" rx="8" />
+        <text className="kv-cache-badge-title" x="925" y="324">
+          KV Cache
+        </text>
+        <text className="kv-cache-badge-shape" x="925" y="339">
+          {cacheShape}
+        </text>
+      </g>
+      <path className="detail-flow" d="M890 381 L925 381" />
+      <path className="detail-flow" d="M978 402 L978 420" />
+      <path className="detail-flow" d="M925 441 L890 461" />
+      <path className="detail-flow" d="M890 461 L925 501" />
+      <path className="detail-flow" d="M925 501 L890 541" />
+      <path className="detail-flow" d="M890 541 L925 561" />
+      <path className="detail-flow" d="M978 582 L914 616" />
+      {steps.map((step) => (
+        <DetailStepNode
+          activeStageId={activeStageId}
+          key={`${step.label}-${step.x}-${step.y}`}
+          onSelectStage={onSelectStage}
+          selectedOperatorId={selectedOperatorId}
+          step={step}
+        />
+      ))}
+    </g>
+  );
+}
+
+function MlpDetailPanel({
+  activeStageId,
+  isLlama,
+  onSelectStage,
+  selectedOperatorId,
+}: DetailPanelProps) {
+  const steps: DetailStepSpec[] = [
+    {
+      label: isLlama ? "RMSNorm" : "LayerNorm",
+      detail: "pre-mlp",
+      x: 92,
+      y: 284,
+      w: 98,
+      h: 40,
+      stageId: "residual",
+      operatorMatches: ["rms-mlp", "ln-mlp"],
+    },
+    {
+      label: isLlama ? "Gate / Up" : "Up proj",
+      detail: isLlama ? "two paths" : "d -> 4d",
+      x: 218,
+      y: 284,
+      w: 104,
+      h: 40,
+      stageId: "mlp",
+      operatorMatches: ["swiglu", "mlp-up"],
+    },
+    {
+      label: isLlama ? "SiLU x Up" : "GELU",
+      detail: isLlama ? "multiply" : "nonlinear",
+      x: 92,
+      y: 352,
+      w: 98,
+      h: 40,
+      stageId: "mlp",
+      operatorMatches: ["swiglu", "mlp-up"],
+    },
+    {
+      label: "Down proj",
+      detail: "back to d",
+      x: 218,
+      y: 352,
+      w: 104,
+      h: 40,
+      stageId: "mlp",
+      operatorMatches: ["down-proj", "mlp-down"],
+    },
+    {
+      label: "Residual add",
+      detail: "writeback",
+      x: 154,
+      y: 424,
+      w: 108,
+      h: 40,
+      stageId: "residual",
+      operatorMatches: ["residual-mlp"],
+    },
+  ];
+
+  return (
+    <g className="detail-panel mlp-detail-panel">
+      <rect className="detail-panel-frame" x="58" y="238" width="286" height="242" rx="14" />
+      <text className="detail-panel-title" x="84" y="264">
+        MLP internals
+      </text>
+      <path className="detail-flow" d="M190 304 L218 304" />
+      <path className="detail-flow" d="M270 324 L270 352" />
+      <path className="detail-flow" d="M218 372 L190 372" />
+      <path className="detail-flow" d="M141 392 L180 424" />
+      <path className="detail-flow" d="M270 392 L235 424" />
+      {steps.map((step) => (
+        <DetailStepNode
+          activeStageId={activeStageId}
+          key={`${step.label}-${step.x}-${step.y}`}
+          onSelectStage={onSelectStage}
+          selectedOperatorId={selectedOperatorId}
+          step={step}
+        />
+      ))}
+    </g>
+  );
+}
+
+type DetailStepNodeProps = {
+  activeStageId: StageId;
+  onSelectStage: (stageId: StageId) => void;
+  selectedOperatorId: string;
+  step: DetailStepSpec;
+};
+
+function DetailStepNode({
+  activeStageId,
+  onSelectStage,
+  selectedOperatorId,
+  step,
+}: DetailStepNodeProps) {
+  const operatorActive = step.operatorMatches.some((match) =>
+    selectedOperatorId.includes(match),
+  );
+  const stageRelated = step.stageId === activeStageId;
+  const labelY = step.y + Math.round(step.h * 0.44);
+  const detailY = step.y + Math.round(step.h * 0.78);
+
+  return (
+    <g
+      className={`detail-node ${stageRelated ? "stage-related" : ""} ${
+        operatorActive ? "operator-active" : ""
+      }`}
+      onClick={() => onSelectStage(step.stageId)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          onSelectStage(step.stageId);
+        }
+      }}
+      role="button"
+      tabIndex={0}
+    >
+      <rect x={step.x} y={step.y} width={step.w} height={step.h} rx="7" />
+      <text className="detail-node-label" x={step.x + step.w / 2} y={labelY}>
+        {step.label}
+      </text>
+      <text className="detail-node-detail" x={step.x + step.w / 2} y={detailY}>
+        {step.detail}
+      </text>
+    </g>
+  );
 }
