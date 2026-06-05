@@ -1,33 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ArrowRight } from "lucide-react";
 import { MathFormula } from "./MathFormula";
-import type { OperatorTrace, TraceLayer } from "../types";
+import type { OperatorTrace, TraceLayer, TraceToken } from "../types";
+import {
+  clampOperatorIndex,
+  formatShape,
+  formatTensorSample,
+  getInputSample,
+  operatorGroupLabels,
+} from "../lib/operatorDebug";
 
 type OperatorDebuggerProps = {
   layer: TraceLayer;
+  tokens: TraceToken[];
+  selectedOperatorIndex: number;
+  onSelectOperator: (operatorIndex: number) => void;
 };
 
-const groupLabels: Record<OperatorTrace["group"], string> = {
-  embedding: "Embedding",
-  attention: "Attention",
-  mlp: "MLP",
-  output: "Output",
-  cache: "KV Cache",
-};
-
-export function OperatorDebugger({ layer }: OperatorDebuggerProps) {
+export function OperatorDebugger({
+  layer,
+  tokens,
+  selectedOperatorIndex,
+  onSelectOperator,
+}: OperatorDebuggerProps) {
   const firstOperator = layer.operators[0];
-  const [selectedOperatorId, setSelectedOperatorId] = useState(
-    firstOperator?.id ?? "",
+  const boundedOperatorIndex = clampOperatorIndex(
+    selectedOperatorIndex,
+    layer.operators,
   );
-
-  useEffect(() => {
-    setSelectedOperatorId(layer.operators[0]?.id ?? "");
-  }, [layer.index, layer.operators]);
-
-  const selectedOperator =
-    layer.operators.find((operator) => operator.id === selectedOperatorId) ??
-    firstOperator;
+  const selectedOperator = layer.operators[boundedOperatorIndex] ?? firstOperator;
+  const inputSample = getInputSample(
+    layer.operators,
+    boundedOperatorIndex,
+    tokens.map((token) => token.id),
+  );
 
   const groupedOperators = useMemo(() => {
     return layer.operators.reduce(
@@ -41,6 +47,10 @@ export function OperatorDebugger({ layer }: OperatorDebuggerProps) {
 
   if (!selectedOperator) return null;
 
+  function selectOperator(index: number) {
+    onSelectOperator(clampOperatorIndex(index, layer.operators));
+  }
+
   return (
     <section className="panel operator-debug-panel">
       <div className="section-heading">
@@ -53,26 +63,34 @@ export function OperatorDebugger({ layer }: OperatorDebuggerProps) {
 
       <div className="operator-debug-layout">
         <div className="operator-rail">
-          {(Object.keys(groupLabels) as OperatorTrace["group"][]).map((group) => {
+          {(Object.keys(operatorGroupLabels) as OperatorTrace["group"][]).map((group) => {
             const operators = groupedOperators[group] ?? [];
             if (operators.length === 0) return null;
 
             return (
               <div className="operator-group" key={group}>
-                <span className="operator-group-title">{groupLabels[group]}</span>
-                {operators.map((operator, index) => (
-                  <button
-                    className={`operator-step ${
-                      operator.id === selectedOperator.id ? "active" : ""
-                    }`}
-                    key={operator.id}
-                    onClick={() => setSelectedOperatorId(operator.id)}
-                  >
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <strong>{operator.name}</strong>
-                    <em>{formatShape(operator.outputShape)}</em>
-                  </button>
-                ))}
+                <span className="operator-group-title">
+                  {operatorGroupLabels[group]}
+                </span>
+                {operators.map((operator) => {
+                  const globalIndex = layer.operators.findIndex(
+                    (item) => item.id === operator.id,
+                  );
+
+                  return (
+                    <button
+                      className={`operator-step ${
+                        operator.id === selectedOperator.id ? "active" : ""
+                      }`}
+                      key={operator.id}
+                      onClick={() => selectOperator(globalIndex)}
+                    >
+                      <span>{String(globalIndex + 1).padStart(2, "0")}</span>
+                      <strong>{operator.name}</strong>
+                      <em>{formatShape(operator.outputShape)}</em>
+                    </button>
+                  );
+                })}
               </div>
             );
           })}
@@ -80,48 +98,40 @@ export function OperatorDebugger({ layer }: OperatorDebuggerProps) {
 
         <div className="operator-inspector">
           <span className={`operator-badge group-${selectedOperator.group}`}>
-            {groupLabels[selectedOperator.group]}
+            {operatorGroupLabels[selectedOperator.group]}
           </span>
           <h3>{selectedOperator.name}</h3>
           <p>{selectedOperator.description}</p>
 
-          <div className="operator-formula">
-            <span>Formula</span>
-            <MathFormula
-              block
-              latex={selectedOperator.latex ?? selectedOperator.expression}
-            />
-          </div>
-
-          <div className="operator-shape-flow">
-            <div>
-              <span>Input</span>
+          <div className="operator-dataflow">
+            <div className="tensor-card">
+              <span>Input tensor</span>
               <strong>{formatShape(selectedOperator.inputShape)}</strong>
+              <code>[{formatTensorSample(inputSample)}]</code>
             </div>
-            <b aria-label="flows to">
+            <b aria-label="flows to" className="dataflow-arrow">
               <ArrowRight size={16} />
             </b>
-            <div>
-              <span>Output</span>
-              <strong>{formatShape(selectedOperator.outputShape)}</strong>
-            </div>
-          </div>
 
-          <div className="operator-sample">
-            <span>sample values</span>
-            <code>[{selectedOperator.sample.map(formatNumber).join(", ")}]</code>
+            <div className="operator-kernel">
+              <span>Operator</span>
+              <MathFormula
+                block
+                latex={selectedOperator.latex ?? selectedOperator.expression}
+              />
+            </div>
+
+            <b aria-label="flows to" className="dataflow-arrow">
+              <ArrowRight size={16} />
+            </b>
+            <div className="tensor-card">
+              <span>Output tensor</span>
+              <strong>{formatShape(selectedOperator.outputShape)}</strong>
+              <code>[{formatTensorSample(selectedOperator.sample)}]</code>
+            </div>
           </div>
         </div>
       </div>
     </section>
   );
-}
-
-function formatShape(shape: number[]) {
-  return `[${shape.join(", ")}]`;
-}
-
-function formatNumber(value: number) {
-  if (Math.abs(value) >= 1000) return value.toExponential(1);
-  return value.toFixed(3).replace(/\.?0+$/, "");
 }

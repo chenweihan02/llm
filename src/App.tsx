@@ -9,6 +9,7 @@ import { PredictionPanel } from "./components/PredictionPanel";
 import { TokenStrip } from "./components/TokenStrip";
 import { modelProfiles } from "./data/modelProfiles";
 import { traces } from "./data/traces";
+import { clampOperatorIndex, operatorToStage } from "./lib/operatorDebug";
 import type { StageId } from "./types";
 import "./style.css";
 
@@ -22,6 +23,8 @@ export default function App() {
   );
   const [activeStageId, setActiveStageId] = useState<StageId>("attention");
   const [selectedDecodeIndex, setSelectedDecodeIndex] = useState(0);
+  const [selectedOperatorIndex, setSelectedOperatorIndex] = useState(0);
+  const [isOperatorPlaying, setIsOperatorPlaying] = useState(false);
 
   const selectedTrace =
     traces.find((trace) => trace.id === selectedTraceId) ?? traces[0];
@@ -36,6 +39,10 @@ export default function App() {
     selectedTrace.stages[0];
   const selectedDecodeStep =
     selectedTrace.decodeSteps[selectedDecodeIndex] ?? selectedTrace.decodeSteps[0];
+  const selectedOperator =
+    selectedLayer.operators[
+      clampOperatorIndex(selectedOperatorIndex, selectedLayer.operators)
+    ];
   const selectedModel =
     modelProfiles.find((profile) => profile.id === selectedTrace.modelProfileId) ??
     modelProfiles[0];
@@ -64,13 +71,48 @@ export default function App() {
     if (!selectedTrace.decodeSteps[selectedDecodeIndex]) {
       setSelectedDecodeIndex(0);
     }
+    if (!selectedLayer.operators[selectedOperatorIndex]) {
+      setSelectedOperatorIndex(0);
+      setIsOperatorPlaying(false);
+    }
   }, [
     activeStageId,
     selectedDecodeIndex,
     selectedLayerIndex,
+    selectedLayer.operators,
+    selectedOperatorIndex,
     selectedTokenPosition,
     selectedTrace,
   ]);
+
+  useEffect(() => {
+    setSelectedOperatorIndex(0);
+    setIsOperatorPlaying(false);
+  }, [selectedLayer.index, selectedTrace.id]);
+
+  useEffect(() => {
+    if (!selectedOperator) return;
+    setActiveStageId(operatorToStage(selectedOperator));
+  }, [selectedOperator]);
+
+  useEffect(() => {
+    if (!isOperatorPlaying || selectedLayer.operators.length === 0) return;
+
+    const timer = window.setInterval(() => {
+      setSelectedOperatorIndex((currentIndex) => {
+        const nextIndex = currentIndex + 1;
+
+        if (nextIndex >= selectedLayer.operators.length) {
+          setIsOperatorPlaying(false);
+          return currentIndex;
+        }
+
+        return nextIndex;
+      });
+    }, 1200);
+
+    return () => window.clearInterval(timer);
+  }, [isOperatorPlaying, selectedLayer.operators.length]);
 
   function selectTrace(traceId: string) {
     const nextTrace = traces.find((trace) => trace.id === traceId) ?? traces[0];
@@ -78,7 +120,15 @@ export default function App() {
     setSelectedLayerIndex(nextTrace.layers[0].index);
     setSelectedTokenPosition(nextTrace.decodeSteps[0].inputPosition);
     setSelectedDecodeIndex(0);
+    setSelectedOperatorIndex(0);
+    setIsOperatorPlaying(false);
     setActiveStageId("attention");
+  }
+
+  function selectOperator(operatorIndex: number) {
+    setSelectedOperatorIndex(
+      clampOperatorIndex(operatorIndex, selectedLayer.operators),
+    );
   }
 
   return (
@@ -117,8 +167,6 @@ export default function App() {
           selectedTrace={selectedTrace}
           selectedLayerIndex={selectedLayer.index}
           selectedDecodeIndex={selectedDecodeIndex}
-          modelProfiles={modelProfiles}
-          selectedModel={selectedModel}
           onTraceSelect={selectTrace}
           onLayerChange={setSelectedLayerIndex}
           onDecodeStepChange={setSelectedDecodeIndex}
@@ -131,27 +179,39 @@ export default function App() {
             decodeStep={selectedDecodeStep}
             selectedToken={selectedToken}
             activeStageId={activeStageId}
+            selectedOperatorIndex={selectedOperatorIndex}
+            isOperatorPlaying={isOperatorPlaying}
             onSelectStage={setActiveStageId}
+            onSelectOperator={selectOperator}
+            onPlayingChange={setIsOperatorPlaying}
           />
-          <TokenStrip
+          <OperatorDebugger
+            layer={selectedLayer}
+            selectedOperatorIndex={selectedOperatorIndex}
+            onSelectOperator={selectOperator}
             tokens={selectedTrace.tokens}
-            selectedTokenPosition={selectedToken.position}
-            onSelect={setSelectedTokenPosition}
           />
-          <OperatorDebugger layer={selectedLayer} />
-          <div className="visual-grid">
-            <AttentionMap
+          <details className="auxiliary-debug-panel">
+            <summary>辅助探针：Token / Attention / Logits</summary>
+            <TokenStrip
               tokens={selectedTrace.tokens}
-              layer={selectedLayer}
               selectedTokenPosition={selectedToken.position}
               onSelect={setSelectedTokenPosition}
             />
-            <PredictionPanel
-              decodeSteps={selectedTrace.decodeSteps}
-              selectedDecodeIndex={selectedDecodeIndex}
-              onSelectDecodeStep={setSelectedDecodeIndex}
-            />
-          </div>
+            <div className="visual-grid">
+              <AttentionMap
+                tokens={selectedTrace.tokens}
+                layer={selectedLayer}
+                selectedTokenPosition={selectedToken.position}
+                onSelect={setSelectedTokenPosition}
+              />
+              <PredictionPanel
+                decodeSteps={selectedTrace.decodeSteps}
+                selectedDecodeIndex={selectedDecodeIndex}
+                onSelectDecodeStep={setSelectedDecodeIndex}
+              />
+            </div>
+          </details>
         </div>
 
         <InspectorPanel

@@ -1,5 +1,5 @@
-import { Database, FileJson, GitBranch, Layers3, Network } from "lucide-react";
-import type { InferenceTrace, ModelProfile } from "../types";
+import { Database, FileJson, GitBranch, Layers3 } from "lucide-react";
+import type { InferenceTrace } from "../types";
 
 type ControlsPanelProps = {
   traces: InferenceTrace[];
@@ -7,8 +7,6 @@ type ControlsPanelProps = {
   selectedTrace: InferenceTrace;
   selectedLayerIndex: number;
   selectedDecodeIndex: number;
-  modelProfiles: ModelProfile[];
-  selectedModel: ModelProfile;
   onTraceSelect: (traceId: string) => void;
   onLayerChange: (layerIndex: number) => void;
   onDecodeStepChange: (stepIndex: number) => void;
@@ -20,52 +18,43 @@ export function ControlsPanel({
   selectedTrace,
   selectedLayerIndex,
   selectedDecodeIndex,
-  modelProfiles,
-  selectedModel,
   onTraceSelect,
   onLayerChange,
   onDecodeStepChange,
 }: ControlsPanelProps) {
   return (
-    <aside className="panel controls-panel">
+    <aside className="panel controls-panel compact-controls-panel">
       <div className="panel-heading">
         <div>
           <span className="eyebrow">Trace Console</span>
-          <h2>推理轨迹</h2>
+          <h2>轨迹控制</h2>
         </div>
         <FileJson size={19} />
       </div>
 
-      <div className="control-block">
-        <div className="control-title">
-          <Database size={16} />
-          <span>Trace 样例</span>
-        </div>
-        <div className="trace-list">
+      <div className="compact-field">
+        <label htmlFor="trace-select">
+          <Database size={15} />
+          <span>Trace</span>
+        </label>
+        <select
+          id="trace-select"
+          value={selectedTraceId}
+          onChange={(event) => onTraceSelect(event.currentTarget.value)}
+        >
           {traces.map((trace) => (
-            <button
-              className={`trace-button ${
-                trace.id === selectedTraceId ? "active" : ""
-              }`}
-              key={trace.id}
-              onClick={() => onTraceSelect(trace.id)}
-            >
-              <strong>{trace.title}</strong>
-              <span>{trace.family} · {trace.parameterScale}</span>
-            </button>
+            <option key={trace.id} value={trace.id}>
+              {trace.title}
+            </option>
           ))}
+        </select>
+        <div className="trace-metadata">
+          <strong>{selectedTrace.family}</strong>
+          <span>{selectedTrace.parameterScale}</span>
         </div>
       </div>
 
-      <div className="prompt-block">
-        <span className="field-label">Prompt</span>
-        <p>{selectedTrace.prompt}</p>
-        <span className="generated-preview">
-          output: {selectedTrace.generatedText}
-        </span>
-      </div>
-
-      <div className="control-block">
+      <div className="control-block compact-control-block">
         <div className="control-title">
           <Layers3 size={16} />
           <span>Layer probe</span>
@@ -78,6 +67,7 @@ export function ControlsPanel({
               }`}
               key={layer.index}
               onClick={() => onLayerChange(layer.index)}
+              title={layer.label}
             >
               L{layer.index}
               <span>{layer.label}</span>
@@ -86,7 +76,7 @@ export function ControlsPanel({
         </div>
       </div>
 
-      <div className="control-block">
+      <div className="control-block compact-control-block">
         <div className="control-title">
           <GitBranch size={16} />
           <span>Decode step</span>
@@ -99,6 +89,7 @@ export function ControlsPanel({
               }`}
               key={step.index}
               onClick={() => onDecodeStepChange(step.index)}
+              title={`${step.phase}: ${step.outputToken.text} / pos ${step.inputPosition} -> id ${step.selectedTokenId}`}
             >
               <span>{step.phase}</span>
               <strong>{step.outputToken.text}</strong>
@@ -108,32 +99,20 @@ export function ControlsPanel({
         </div>
       </div>
 
-      <div className="model-selector">
-        <div className="control-title">
-          <Network size={16} />
-          <span>模型族对照</span>
+      <details className="trace-context-details">
+        <summary>Prompt / source</summary>
+        <div className="prompt-block compact-prompt-block">
+          <span className="field-label">Prompt</span>
+          <p>{selectedTrace.prompt}</p>
+          <span className="generated-preview">
+            output: {selectedTrace.generatedText}
+          </span>
         </div>
-        <div className="selected-model-card">
-          <strong>{selectedModel.label}</strong>
-          <span>{selectedModel.name}</span>
-          <p>{selectedModel.summary}</p>
+        <div className="source-card compact-source-card">
+          <span>{selectedTrace.source.label}</span>
+          <p>{selectedTrace.source.note}</p>
         </div>
-        <div className="compact-model-list">
-          {modelProfiles.map((profile) => (
-            <span
-              className={profile.id === selectedModel.id ? "active" : ""}
-              key={profile.id}
-            >
-              {profile.label}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="source-card">
-        <span>{selectedTrace.source.label}</span>
-        <p>{selectedTrace.source.note}</p>
-      </div>
+      </details>
     </aside>
   );
 }
