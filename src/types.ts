@@ -17,6 +17,7 @@ export type TransformerStage = {
   short: string;
   detail: string;
   formula: string;
+  latex?: string;
   icon: LucideIcon;
 };
 
@@ -100,6 +101,7 @@ export type TraceStage = {
   subtitle: string;
   description: string;
   formula: string;
+  latex?: string;
   shape: string;
 };
 
@@ -128,6 +130,19 @@ export type TraceLayer = {
     shape: number[];
     sample: number[];
   }[];
+  operators: OperatorTrace[];
+};
+
+export type OperatorTrace = {
+  id: string;
+  group: "embedding" | "attention" | "mlp" | "output" | "cache";
+  name: string;
+  expression: string;
+  latex?: string;
+  inputShape: number[];
+  outputShape: number[];
+  sample: number[];
+  description: string;
 };
 
 export type TopLogit = {

@@ -16,6 +16,7 @@ import type {
   TraceStage,
   TraceToken,
 } from "../types";
+import { MathFormula } from "./MathFormula";
 
 type Source = {
   token: TraceToken;
@@ -86,7 +87,9 @@ export function InspectorPanel({
           {stage.title}
         </h3>
         <p>{stage.description}</p>
-        <code>{stage.formula}</code>
+        <div className="stage-formula">
+          <MathFormula block latex={stage.latex ?? stage.formula} />
+        </div>
         <span className="shape-line">{stage.shape}</span>
       </div>
 

@@ -22,7 +22,7 @@ export function PredictionPanel({
           <h2>下一 token 分布</h2>
         </div>
         <span className="metric">
-          T={step.temperature} / top-p {step.topP}
+          temperature {step.temperature} / top-p {step.topP}
         </span>
       </div>
 

@@ -4,6 +4,7 @@ import { AttentionMap } from "./components/AttentionMap";
 import { ArchitectureDiagram } from "./components/ArchitectureDiagram";
 import { ControlsPanel } from "./components/ControlsPanel";
 import { InspectorPanel } from "./components/InspectorPanel";
+import { OperatorDebugger } from "./components/OperatorDebugger";
 import { PredictionPanel } from "./components/PredictionPanel";
 import { TokenStrip } from "./components/TokenStrip";
 import { modelProfiles } from "./data/modelProfiles";
@@ -14,7 +15,7 @@ import "./style.css";
 export default function App() {
   const [selectedTraceId, setSelectedTraceId] = useState(traces[0].id);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState(
-    traces[0].layers[1]?.index ?? traces[0].layers[0].index,
+    traces[0].layers[0].index,
   );
   const [selectedTokenPosition, setSelectedTokenPosition] = useState(
     traces[0].decodeSteps[0].inputPosition,
@@ -74,7 +75,7 @@ export default function App() {
   function selectTrace(traceId: string) {
     const nextTrace = traces.find((trace) => trace.id === traceId) ?? traces[0];
     setSelectedTraceId(nextTrace.id);
-    setSelectedLayerIndex(nextTrace.layers[1]?.index ?? nextTrace.layers[0].index);
+    setSelectedLayerIndex(nextTrace.layers[0].index);
     setSelectedTokenPosition(nextTrace.decodeSteps[0].inputPosition);
     setSelectedDecodeIndex(0);
     setActiveStageId("attention");
@@ -137,6 +138,7 @@ export default function App() {
             selectedTokenPosition={selectedToken.position}
             onSelect={setSelectedTokenPosition}
           />
+          <OperatorDebugger layer={selectedLayer} />
           <div className="visual-grid">
             <AttentionMap
               tokens={selectedTrace.tokens}

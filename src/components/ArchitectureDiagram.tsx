@@ -5,6 +5,7 @@ import type {
   TraceLayer,
   TraceToken,
 } from "../types";
+import { MathFormula } from "./MathFormula";
 
 type ArchitectureDiagramProps = {
   trace: InferenceTrace;
@@ -15,6 +16,8 @@ type ArchitectureDiagramProps = {
   onSelectStage: (stageId: StageId) => void;
 };
 
+type NodeTone = "token" | "norm" | "attention" | "mlp" | "output" | "cache";
+
 type NodeSpec = {
   id: StageId;
   label: string;
@@ -23,7 +26,7 @@ type NodeSpec = {
   y: number;
   w: number;
   h: number;
-  tone: "token" | "compute" | "attention" | "memory" | "output";
+  tone: NodeTone;
 };
 
 export function ArchitectureDiagram({
@@ -35,137 +38,154 @@ export function ArchitectureDiagram({
   onSelectStage,
 }: ArchitectureDiagramProps) {
   const stageById = new Map(trace.stages.map((stage) => [stage.id, stage]));
-  const positionLabel =
-    trace.modelProfileId === "llama-style" ? "RoPE on Q/K" : "Position add";
-  const normLabel =
-    trace.modelProfileId === "llama-style" ? "RMSNorm + residual" : "LayerNorm / residual";
-  const mlpLabel =
-    trace.modelProfileId === "llama-style" ? "SwiGLU MLP" : "GELU MLP";
+  const isLlama = trace.modelProfileId === "llama-style";
+  const normLabel = isLlama ? "RMSNorm" : "LayerNorm";
+  const positionLabel = isLlama ? "RoPE in Q/K" : "Position Encoding";
+  const mlpLabel = isLlama ? "SwiGLU Feed Forward" : "GELU Feed Forward";
+  const attentionLabel = "Masked Multi-Head Attention";
+  const activeStage = stageById.get(activeStageId) ?? trace.stages[0];
 
   const nodes: NodeSpec[] = [
     {
       id: "tokenize",
-      label: "Token ids",
-      detail: stageById.get("tokenize")?.shape ?? "[batch, seq]",
-      x: 54,
-      y: 586,
-      w: 168,
-      h: 64,
+      label: "Token IDs",
+      detail: `[1, ${trace.tokens.length}]`,
+      x: 442,
+      y: 864,
+      w: 230,
+      h: 58,
       tone: "token",
     },
     {
       id: "embedding",
-      label: "Embedding",
-      detail: `${trace.hiddenSize} dims`,
-      x: 286,
-      y: 586,
-      w: 178,
-      h: 64,
-      tone: "compute",
+      label: "Input Embedding",
+      detail: `[1, seq, ${trace.hiddenSize}]`,
+      x: 404,
+      y: 774,
+      w: 306,
+      h: 66,
+      tone: "token",
     },
     {
       id: "position",
       label: positionLabel,
       detail: stageById.get("position")?.subtitle ?? "position",
-      x: 528,
-      y: 586,
-      w: 190,
-      h: 64,
-      tone: "compute",
+      x: 124,
+      y: 784,
+      w: 196,
+      h: 56,
+      tone: "norm",
     },
     {
-      id: "qkv",
-      label: "Q K V projections",
-      detail: `${layer.heads} Q heads / ${layer.kvHeads} KV heads`,
-      x: 274,
-      y: 418,
-      w: 220,
-      h: 70,
-      tone: "compute",
+      id: "residual",
+      label: `Add & ${normLabel}`,
+      detail: "pre-attention norm",
+      x: 428,
+      y: 668,
+      w: 258,
+      h: 48,
+      tone: "norm",
     },
     {
       id: "attention",
-      label: "Masked attention",
-      detail: `head ${layer.attentionHead}, scale ${layer.qkScale}`,
-      x: 550,
-      y: 396,
-      w: 250,
-      h: 96,
+      label: attentionLabel,
+      detail: `Q ${layer.heads} heads / KV ${layer.kvHeads}`,
+      x: 396,
+      y: 552,
+      w: 322,
+      h: 88,
       tone: "attention",
     },
     {
       id: "residual",
-      label: normLabel,
-      detail: "write attention/MLP output",
-      x: 552,
-      y: 302,
-      w: 246,
-      h: 60,
-      tone: "compute",
+      label: `Add & ${normLabel}`,
+      detail: "attention writeback",
+      x: 428,
+      y: 466,
+      w: 258,
+      h: 48,
+      tone: "norm",
     },
     {
       id: "mlp",
       label: mlpLabel,
       detail: stageById.get("mlp")?.subtitle ?? "feed-forward",
-      x: 552,
-      y: 204,
-      w: 246,
-      h: 70,
-      tone: "compute",
+      x: 396,
+      y: 340,
+      w: 322,
+      h: 92,
+      tone: "mlp",
+    },
+    {
+      id: "residual",
+      label: `Add & ${normLabel}`,
+      detail: "mlp writeback",
+      x: 428,
+      y: 252,
+      w: 258,
+      h: 48,
+      tone: "norm",
     },
     {
       id: "logits",
-      label: "LM head",
-      detail: `${trace.vocabSize.toLocaleString()} logits`,
-      x: 510,
-      y: 78,
-      w: 206,
-      h: 62,
+      label: "Linear / LM Head",
+      detail: `[1, ${trace.vocabSize.toLocaleString()}]`,
+      x: 428,
+      y: 142,
+      w: 258,
+      h: 56,
       tone: "output",
     },
     {
       id: "sampling",
-      label: "Selection",
-      detail: `entropy ${decodeStep.entropy.toFixed(2)}`,
-      x: 786,
-      y: 78,
-      w: 188,
-      h: 62,
+      label: "Softmax",
+      detail: "output probabilities",
+      x: 452,
+      y: 60,
+      w: 210,
+      h: 48,
       tone: "output",
     },
     {
+      id: "qkv",
+      label: "Q/K/V projections",
+      detail: formatShape(layer.kvCache.keyShape),
+      x: 784,
+      y: 552,
+      w: 238,
+      h: 88,
+      tone: "cache",
+    },
+    {
       id: "kvcache",
-      label: "KV cache",
-      detail: `seq ${decodeStep.kvCache.sequenceLength}`,
-      x: 874,
-      y: 366,
-      w: 210,
-      h: 126,
-      tone: "memory",
+      label: "KV Cache",
+      detail: `${decodeStep.kvCache.memoryMB.toFixed(2)} MB / layer`,
+      x: 784,
+      y: 438,
+      w: 238,
+      h: 82,
+      tone: "cache",
     },
   ];
-
-  const activeStage = stageById.get(activeStageId) ?? trace.stages[0];
-  const promptTokens = trace.tokens.filter((token) => token.role === "prompt").length;
 
   return (
     <section className="panel architecture-panel">
       <div className="section-heading">
         <div>
           <span className="eyebrow">Transformer Anatomy</span>
-          <h2>Decoder-only 推理路径</h2>
+          <h2>Decoder-only Transformer 架构</h2>
         </div>
         <span className="metric">
-          {trace.layerCount}L / d={trace.hiddenSize} / {trace.tokenizer}
+          L{layer.index} / {trace.layerCount} layers / hidden {trace.hiddenSize}
         </span>
       </div>
 
       <div className="diagram-workbench">
         <svg
-          className="transformer-schematic"
-          viewBox="0 0 1128 700"
+          className="transformer-schematic transformer-schematic-tall"
+          viewBox="0 0 1128 960"
           role="img"
-          aria-label={`${trace.title} transformer inference diagram`}
+          aria-label={`${trace.title} detailed decoder-only transformer diagram`}
         >
           <defs>
             <marker
@@ -178,75 +198,60 @@ export function ArchitectureDiagram({
             >
               <path d="M 0 0 L 8 4 L 0 8 z" />
             </marker>
-            <linearGradient id="residual-gradient" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0%" stopColor="#2f6f73" />
-              <stop offset="100%" stopColor="#a94b43" />
-            </linearGradient>
           </defs>
 
-          <rect className="diagram-bg" x="18" y="24" width="1092" height="652" rx="18" />
-          <text className="diagram-title" x="44" y="64">
+          <rect className="diagram-bg" x="20" y="22" width="1088" height="914" rx="18" />
+          <text className="diagram-title" x="48" y="62">
             {trace.title}
           </text>
-          <text className="diagram-subtitle" x="44" y="90">
-            prefill: {promptTokens} prompt tokens · decode: token {decodeStep.outputToken.text}
+          <text className="diagram-subtitle" x="48" y="88">
+            Layer 0 operator debug · selected token {selectedToken.text} · decode output {decodeStep.outputToken.text}
           </text>
 
-          <g className="decoder-frame">
-            <rect x="232" y="174" width="632" height="352" rx="20" />
-            <text x="258" y="208">decoder block x {trace.layerCount}</text>
-            <text x="258" y="232">selected layer: L{layer.index} · {layer.label}</text>
+          <g className="decoder-stack">
+            <rect x="350" y="222" width="414" height="514" rx="22" />
+            <text x="372" y="252">decoder block repeated N x</text>
+            <text x="372" y="276">expanded: Layer {layer.index}</text>
           </g>
 
-          <path className="flow-line main-flow" d="M222 618 L286 618" />
-          <path className="flow-line main-flow" d="M464 618 L528 618" />
-          <path className="flow-line main-flow" d="M624 586 C624 536 386 536 386 488" />
-          <path className="flow-line main-flow" d="M494 452 L550 452" />
-          <path className="flow-line main-flow" d="M675 396 L675 362" />
-          <path className="flow-line main-flow" d="M675 302 L675 274" />
-          <path className="flow-line main-flow" d="M675 204 L675 140" />
-          <path className="flow-line main-flow" d="M716 110 L786 110" />
-          <path className="flow-line cache-flow" d="M800 438 L874 438" />
-          <path className="flow-line cache-flow reverse-flow" d="M874 470 C834 514 762 510 718 492" />
+          <text className="nx-label" x="780" y="492">N x</text>
+          <text className="prob-label" x="560" y="38">Output Probabilities</text>
 
-          <path
-            className="residual-rail"
-            d="M182 548 C180 308 292 238 552 332"
-          />
-          <path
-            className="residual-rail"
-            d="M798 332 C940 304 936 168 716 110"
-          />
-          <path className="decode-loop" d="M974 110 C1052 150 1062 578 718 618" />
+          <path className="flow-line main-flow" d="M557 864 L557 840" />
+          <path className="flow-line main-flow" d="M557 774 L557 716" />
+          <path className="flow-line main-flow" d="M557 668 L557 640" />
+          <path className="flow-line main-flow" d="M557 552 L557 514" />
+          <path className="flow-line main-flow" d="M557 466 L557 432" />
+          <path className="flow-line main-flow" d="M557 340 L557 300" />
+          <path className="flow-line main-flow" d="M557 252 L557 198" />
+          <path className="flow-line main-flow" d="M557 142 L557 108" />
 
-          {trace.tokens.map((token, index) => (
-            <g
-              className={`mini-token ${
-                token.position === selectedToken.position ? "selected" : ""
-              }`}
-              key={`${token.id}-${token.position}`}
-              transform={`translate(${46 + index * 58}, 650)`}
-            >
-              <rect width="48" height="24" rx="6" style={{ fill: token.color }} />
-              <text x="24" y="16">
-                {token.position}
-              </text>
-            </g>
-          ))}
+          <path className="flow-line side-flow" d="M320 812 C354 812 374 812 404 812" />
+          <path className="flow-line cache-flow" d="M718 596 L784 596" />
+          <path className="flow-line cache-flow" d="M903 552 L903 520" />
+          <path className="flow-line cache-flow reverse-flow" d="M784 480 C744 492 734 542 718 596" />
 
-          {nodes.map((node) => (
+          <path className="residual-loop" d="M428 692 C244 692 244 490 428 490" />
+          <path className="residual-loop" d="M686 490 C870 490 870 276 686 276" />
+          <path className="residual-loop" d="M718 384 C760 384 764 276 686 276" />
+
+          {nodes.map((node, index) => (
             <DiagramNode
-              key={node.id}
+              key={`${node.id}-${node.label}-${index}`}
               node={node}
               selected={node.id === activeStageId}
               onSelect={onSelectStage}
             />
           ))}
 
-          <g className="kv-shape">
-            <text x="898" y="426">K {formatShape(decodeStep.kvCache.keyShape)}</text>
-            <text x="898" y="454">V {formatShape(decodeStep.kvCache.valueShape)}</text>
-            <text x="898" y="482">{decodeStep.kvCache.memoryMB.toFixed(2)} MB / layer</text>
+          <g className="operator-chain-mini">
+            <text x="58" y="390">Layer {layer.index} op chain</text>
+            {layer.operators.slice(2, 10).map((operator, index) => (
+              <g key={operator.id} transform={`translate(58, ${410 + index * 38})`}>
+                <circle r="5" cx="0" cy="0" />
+                <text x="14" y="5">{operator.name}</text>
+              </g>
+            ))}
           </g>
         </svg>
 
@@ -254,19 +259,21 @@ export function ArchitectureDiagram({
           <span className="arch-kicker">Selected module</span>
           <h3>{activeStage.title}</h3>
           <p>{activeStage.description}</p>
-          <code>{activeStage.formula}</code>
+          <div className="stage-formula">
+            <MathFormula block latex={activeStage.latex ?? activeStage.formula} />
+          </div>
           <div className="readout-grid">
             <div>
               <span>Tensor shape</span>
               <strong>{activeStage.shape}</strong>
             </div>
             <div>
-              <span>Selected token</span>
-              <strong>{selectedToken.text} · pos {selectedToken.position}</strong>
+              <span>Layer 0 operators</span>
+              <strong>{layer.operators.length} traced ops</strong>
             </div>
             <div>
-              <span>Decode output</span>
-              <strong>{decodeStep.outputToken.text} · id {decodeStep.selectedTokenId}</strong>
+              <span>KV cache</span>
+              <strong>K {formatShape(decodeStep.kvCache.keyShape)}</strong>
             </div>
           </div>
         </div>
@@ -294,11 +301,11 @@ function DiagramNode({ node, selected, onSelect }: DiagramNodeProps) {
       role="button"
       tabIndex={0}
     >
-      <rect x={node.x} y={node.y} width={node.w} height={node.h} rx="10" />
-      <text className="node-title" x={node.x + 18} y={node.y + 28}>
+      <rect x={node.x} y={node.y} width={node.w} height={node.h} rx="9" />
+      <text className="node-title" x={node.x + node.w / 2} y={node.y + 25}>
         {node.label}
       </text>
-      <text className="node-detail" x={node.x + 18} y={node.y + node.h - 18}>
+      <text className="node-detail" x={node.x + node.w / 2} y={node.y + node.h - 16}>
         {node.detail}
       </text>
     </g>
