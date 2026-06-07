@@ -260,6 +260,481 @@ def comparisons() -> list[dict[str, str]]:
     ]
 
 
+def first_tensor(value: Any) -> Any | None:
+    if hasattr(value, "detach") and hasattr(value, "shape"):
+        return value
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            tensor = first_tensor(item)
+            if tensor is not None:
+                return tensor
+    if isinstance(value, dict):
+        for item in value.values():
+            tensor = first_tensor(item)
+            if tensor is not None:
+                return tensor
+    return None
+
+
+def tensor_sample(tensor: Any, limit: int = 8) -> list[float]:
+    tensor = tensor.detach().float().cpu()
+    try:
+        if tensor.ndim == 0:
+            selected = tensor.reshape(1)
+        elif tensor.ndim == 1:
+            selected = tensor
+        elif tensor.ndim == 2:
+            selected = tensor[-1]
+        elif tensor.ndim == 3:
+            selected = tensor[0, -1]
+        elif tensor.ndim == 4:
+            selected = tensor[0, 0, -1]
+        else:
+            selected = tensor.reshape(-1)
+    except IndexError:
+        selected = tensor.reshape(-1)
+    return [round(float(value), 6) for value in selected.reshape(-1)[:limit].tolist()]
+
+
+def tensor_record(value: Any) -> dict[str, Any] | None:
+    tensor = first_tensor(value)
+    if tensor is None:
+        return None
+    return {
+        "shape": shape_of(tensor),
+        "sample": tensor_sample(tensor),
+        "stats": tensor_stats(tensor),
+    }
+
+
+def module_at(root: Any, path: str) -> Any | None:
+    current = root
+    for part in path.split("."):
+        try:
+            current = current[int(part)] if part.isdigit() else getattr(current, part)
+        except (AttributeError, IndexError, TypeError, KeyError):
+            return None
+    return current
+
+
+def operator_spec(
+    operator_id: str,
+    name: str,
+    group: str,
+    stage_id: str,
+    path: str,
+    expression: str,
+    latex: str,
+    description: str,
+) -> dict[str, str]:
+    return {
+        "id": operator_id,
+        "name": name,
+        "group": group,
+        "stageId": stage_id,
+        "path": path,
+        "expression": expression,
+        "latex": latex,
+        "description": description,
+    }
+
+
+def hook_specs_for_layer(layer_index: int, is_llama: bool) -> list[dict[str, str]]:
+    if is_llama:
+        prefix = f"model.layers.{layer_index}"
+        return [
+            operator_spec(
+                "rms-attn",
+                "RMSNorm before Attention",
+                "attention",
+                "residual",
+                f"{prefix}.input_layernorm",
+                "a0 = RMSNorm(x0)",
+                "\\hat{X}_0=\\operatorname{RMSNorm}(X_0)",
+                "Measured module input/output for the pre-attention RMSNorm.",
+            ),
+            operator_spec(
+                "q-proj",
+                "Query Projection",
+                "attention",
+                "qkv",
+                f"{prefix}.self_attn.q_proj",
+                "Q = a0 W_q",
+                "Q=\\hat{X}_0W_q",
+                "Measured query projection output.",
+            ),
+            operator_spec(
+                "k-proj",
+                "Key Projection",
+                "attention",
+                "qkv",
+                f"{prefix}.self_attn.k_proj",
+                "K = a0 W_k",
+                "K=\\hat{X}_0W_k",
+                "Measured key projection output before model-internal positional handling.",
+            ),
+            operator_spec(
+                "v-proj",
+                "Value Projection",
+                "attention",
+                "qkv",
+                f"{prefix}.self_attn.v_proj",
+                "V = a0 W_v",
+                "V=\\hat{X}_0W_v",
+                "Measured value projection output.",
+            ),
+            operator_spec(
+                "attn-out",
+                "Attention Output Projection",
+                "attention",
+                "attention",
+                f"{prefix}.self_attn.o_proj",
+                "O_attn = concat(ctx) W_o",
+                "O_{\\mathrm{attn}}=\\operatorname{Concat}(C_1,\\ldots,C_h)W_o",
+                "Measured attention output projection input/output.",
+            ),
+            operator_spec(
+                "rms-mlp",
+                "RMSNorm before MLP",
+                "mlp",
+                "residual",
+                f"{prefix}.post_attention_layernorm",
+                "m0 = RMSNorm(x1)",
+                "\\hat{X}_1=\\operatorname{RMSNorm}(X_1)",
+                "Measured module input/output for the pre-MLP RMSNorm.",
+            ),
+            operator_spec(
+                "gate-proj",
+                "SwiGLU Gate Projection",
+                "mlp",
+                "mlp",
+                f"{prefix}.mlp.gate_proj",
+                "G = x W_gate",
+                "G=\\hat{X}_1W_{\\mathrm{gate}}",
+                "Measured gate branch projection.",
+            ),
+            operator_spec(
+                "up-proj",
+                "SwiGLU Up Projection",
+                "mlp",
+                "mlp",
+                f"{prefix}.mlp.up_proj",
+                "U = x W_up",
+                "U=\\hat{X}_1W_{\\mathrm{up}}",
+                "Measured up branch projection.",
+            ),
+            operator_spec(
+                "down-proj",
+                "MLP Down Projection",
+                "mlp",
+                "mlp",
+                f"{prefix}.mlp.down_proj",
+                "O_mlp = SiLU(G) * U * W_down",
+                "O_{\\mathrm{mlp}}=(\\operatorname{SiLU}(G)\\odot U)W_{\\mathrm{down}}",
+                "Measured down projection input/output after the gated activation.",
+            ),
+        ]
+
+    prefix = f"transformer.h.{layer_index}"
+    return [
+        operator_spec(
+            "ln-attn",
+            "LayerNorm before Attention",
+            "attention",
+            "residual",
+            f"{prefix}.ln_1",
+            "a0 = LayerNorm(x0)",
+            "\\hat{X}_0=\\operatorname{LayerNorm}(X_0)",
+            "Measured module input/output for the pre-attention LayerNorm.",
+        ),
+        operator_spec(
+            "qkv-proj",
+            "Q/K/V Linear Projection",
+            "attention",
+            "qkv",
+            f"{prefix}.attn.c_attn",
+            "Q,K,V = a0 W_qkv",
+            "[Q,K,V]=\\hat{X}_0W_{qkv}",
+            "Measured fused Q/K/V projection output.",
+        ),
+        operator_spec(
+            "attn-out",
+            "Attention Output Projection",
+            "attention",
+            "attention",
+            f"{prefix}.attn.c_proj",
+            "O_attn = concat(ctx) W_o",
+            "O_{\\mathrm{attn}}=\\operatorname{Concat}(C_1,\\ldots,C_h)W_o",
+            "Measured attention output projection input/output.",
+        ),
+        operator_spec(
+            "ln-mlp",
+            "LayerNorm before MLP",
+            "mlp",
+            "residual",
+            f"{prefix}.ln_2",
+            "m0 = LayerNorm(x1)",
+            "\\hat{X}_1=\\operatorname{LayerNorm}(X_1)",
+            "Measured module input/output for the pre-MLP LayerNorm.",
+        ),
+        operator_spec(
+            "mlp-up",
+            "MLP Up Projection",
+            "mlp",
+            "mlp",
+            f"{prefix}.mlp.c_fc",
+            "U = m0 W_in + b_in",
+            "U=\\hat{X}_1W_{\\mathrm{in}}+b_{\\mathrm{in}}",
+            "Measured MLP expansion projection.",
+        ),
+        operator_spec(
+            "mlp-act",
+            "GELU Activation",
+            "mlp",
+            "mlp",
+            f"{prefix}.mlp.act",
+            "A = GELU(U)",
+            "A=\\operatorname{GELU}(U)",
+            "Measured activation input/output when the activation is exposed as a module.",
+        ),
+        operator_spec(
+            "mlp-down",
+            "MLP Down Projection",
+            "mlp",
+            "mlp",
+            f"{prefix}.mlp.c_proj",
+            "O_mlp = A W_out + b_out",
+            "O_{\\mathrm{mlp}}=AW_{\\mathrm{out}}+b_{\\mathrm{out}}",
+            "Measured MLP down projection.",
+        ),
+    ]
+
+
+def register_operator_hooks(
+    model: Any,
+    selected_layers: list[int],
+    is_llama: bool,
+) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, str]], list[Any]]:
+    recordings: dict[str, dict[str, Any]] = {}
+    specs_by_key: dict[str, dict[str, str]] = {}
+    handles = []
+
+    for layer_index in selected_layers:
+        for spec in hook_specs_for_layer(layer_index, is_llama):
+            module = module_at(model, spec["path"])
+            if module is None or not hasattr(module, "register_forward_hook"):
+                continue
+            key = f"{layer_index}:{spec['id']}"
+            specs_by_key[key] = spec
+
+            def capture(_module: Any, inputs: Any, output: Any, hook_key: str = key) -> None:
+                if hook_key in recordings:
+                    return
+                recordings[hook_key] = {
+                    "input": tensor_record(inputs),
+                    "output": tensor_record(output),
+                }
+
+            handles.append(module.register_forward_hook(capture))
+
+    return recordings, specs_by_key, handles
+
+
+def source_record(source_type: str, label: str, measured: bool, note: str) -> dict[str, Any]:
+    return {
+        "type": source_type,
+        "label": label,
+        "measured": measured,
+        "note": note,
+    }
+
+
+def operator_from_hook(
+    layer_index: int,
+    spec: dict[str, str],
+    record: dict[str, Any],
+) -> dict[str, Any] | None:
+    input_record = record.get("input")
+    output_record = record.get("output")
+    if not input_record or not output_record:
+        return None
+
+    return {
+        "id": spec["id"],
+        "group": spec["group"],
+        "stageId": spec["stageId"],
+        "name": spec["name"],
+        "expression": spec["expression"],
+        "latex": spec["latex"],
+        "inputTensor": f"L{layer_index}.{spec['id']}.input",
+        "outputTensor": f"L{layer_index}.{spec['id']}.output",
+        "inputShape": input_record["shape"],
+        "outputShape": output_record["shape"],
+        "inputSample": input_record["sample"],
+        "outputSample": output_record["sample"],
+        "sample": output_record["sample"],
+        "inputStats": input_record["stats"],
+        "outputStats": output_record["stats"],
+        "reads": [f"L{layer_index}.{spec['id']}.input"],
+        "writes": [f"L{layer_index}.{spec['id']}.output"],
+        "source": source_record(
+            "hf-hook",
+            "HF module hook",
+            True,
+            f"Captured from {spec['path']} during the prefill forward pass.",
+        ),
+        "description": spec["description"],
+        "debugNote": "This operator input/output was captured from a real module forward hook.",
+    }
+
+
+def measured_operator(
+    operator_id: str,
+    group: str,
+    stage_id: str,
+    name: str,
+    expression: str,
+    latex: str,
+    input_shape: list[int],
+    output_shape: list[int],
+    input_sample: list[float],
+    output_sample: list[float],
+    description: str,
+    note: str,
+) -> dict[str, Any]:
+    return {
+        "id": operator_id,
+        "group": group,
+        "stageId": stage_id,
+        "name": name,
+        "expression": expression,
+        "latex": latex,
+        "inputTensor": f"{operator_id}.input",
+        "outputTensor": f"{operator_id}.output",
+        "inputShape": input_shape,
+        "outputShape": output_shape,
+        "inputSample": input_sample,
+        "outputSample": output_sample,
+        "sample": output_sample,
+        "reads": [f"{operator_id}.input"],
+        "writes": [f"{operator_id}.output"],
+        "source": source_record("hf-forward", "HF forward output", True, note),
+        "description": description,
+        "debugNote": note,
+    }
+
+
+def build_exported_operators(
+    layer_index: int,
+    token_ids: list[int],
+    previous_hidden: Any,
+    hidden: Any,
+    attention: list[list[float]],
+    key: Any,
+    value: Any,
+    recordings: dict[str, dict[str, Any]],
+    specs_by_key: dict[str, dict[str, str]],
+) -> list[dict[str, Any]]:
+    operators: list[dict[str, Any]] = []
+
+    if layer_index == 0:
+        operators.append(
+            {
+                "id": "token-embedding",
+                "group": "embedding",
+                "stageId": "embedding",
+                "name": "Token / Position Embedding Output",
+                "expression": "X_0 = embedding(input_ids)",
+                "latex": "X_0=\\operatorname{Embedding}(\\mathrm{input\\_ids})",
+                "inputTensor": "input_ids",
+                "outputTensor": "hidden_states[0]",
+                "inputShape": [1, len(token_ids)],
+                "outputShape": shape_of(previous_hidden),
+                "inputSample": [float(value) for value in token_ids[:8]],
+                "outputSample": tensor_sample(previous_hidden),
+                "sample": tensor_sample(previous_hidden),
+                "inputStats": None,
+                "outputStats": tensor_stats(previous_hidden),
+                "reads": ["input_ids"],
+                "writes": ["hidden_states[0]"],
+                "source": source_record(
+                    "hf-forward",
+                    "HF hidden_states",
+                    True,
+                    "Captured from outputs.hidden_states[0] during the real prefill forward pass.",
+                ),
+                "description": "Tokenizer ids after the model embedding stack becomes the initial residual stream.",
+                "debugNote": "This is the measured initial hidden state exposed by Hugging Face hidden_states.",
+            }
+        )
+
+    for key_name, spec in specs_by_key.items():
+        key_layer, _operator_id = key_name.split(":", 1)
+        if int(key_layer) != layer_index:
+            continue
+        operator = operator_from_hook(layer_index, spec, recordings.get(key_name, {}))
+        if operator:
+            operators.append(operator)
+
+    if attention:
+        attention_shape = [1, int(key.shape[1]), len(attention), len(attention[0])]
+        attention_sample = attention[-1][:8]
+        operators.append(
+            measured_operator(
+                "attn-softmax",
+                "attention",
+                "attention",
+                "Attention Probabilities",
+                "A = softmax(masked_scores)",
+                "A=\\operatorname{softmax}(S+M)",
+                attention_shape,
+                attention_shape,
+                attention_sample,
+                attention_sample,
+                "Measured attention probabilities exposed by output_attentions.",
+                "The raw pre-softmax score tensor is not exposed by every model, so this trace records the measured probabilities.",
+            )
+        )
+
+    key_sample = tensor_sample(key)
+    value_sample = tensor_sample(value)
+    operators.append(
+        measured_operator(
+            "kv-write",
+            "cache",
+            "kvcache",
+            "KV Cache Write",
+            "cache_l = append(K,V)",
+            "\\mathrm{Cache}_{\\ell}\\leftarrow\\operatorname{append}(K,V)",
+            [2, *shape_of(key)],
+            [2, *shape_of(value)],
+            key_sample,
+            value_sample,
+            "Measured K/V tensors stored in past_key_values for this layer.",
+            "Captured from outputs.past_key_values after the prefill forward pass.",
+        )
+    )
+
+    operators.append(
+        measured_operator(
+            "layer-output",
+            "mlp",
+            "residual",
+            "Layer Output Hidden State",
+            "X_{l+1} = block(X_l)",
+            "X_{\\ell+1}=\\operatorname{Block}_{\\ell}(X_{\\ell})",
+            shape_of(previous_hidden),
+            shape_of(hidden),
+            tensor_sample(previous_hidden),
+            tensor_sample(hidden),
+            "Measured hidden state after this decoder block.",
+            "Captured from outputs.hidden_states[layer + 1].",
+        )
+    )
+
+    return operators
+
+
 def main() -> None:
     args = parse_args()
     try:
@@ -288,14 +763,26 @@ def main() -> None:
     vocab_size = int(getattr(model.config, "vocab_size", len(tokenizer)))
     model_type = str(getattr(model.config, "model_type", args.model))
     selected_layers = choose_layers(layer_count, args.layers)
+    if not selected_layers:
+        raise SystemExit("No valid layers selected for this model.")
+    is_llama = "llama" in model_type.lower()
 
-    with torch.no_grad():
-        outputs = model(
-            input_ids=input_ids,
-            output_attentions=True,
-            output_hidden_states=True,
-            use_cache=True,
-        )
+    recordings, specs_by_key, hook_handles = register_operator_hooks(
+        model,
+        selected_layers,
+        is_llama,
+    )
+    try:
+        with torch.no_grad():
+            outputs = model(
+                input_ids=input_ids,
+                output_attentions=True,
+                output_hidden_states=True,
+                use_cache=True,
+            )
+    finally:
+        for handle in hook_handles:
+            handle.remove()
 
     token_ids = [int(value) for value in input_ids[0].detach().cpu().tolist()]
     tokens = [role_token(tokenizer, token_id, index, "prompt") for index, token_id in enumerate(token_ids)]
@@ -350,8 +837,9 @@ def main() -> None:
         hidden = hidden_states[min(layer_index + 1, len(hidden_states) - 1)][0]
         previous = hidden_states[max(layer_index, 0)][0]
         delta = hidden - previous
-        key, _value = outputs.past_key_values[layer_index][:2]
-        heads = int(key.shape[1])
+        key, value = outputs.past_key_values[layer_index][:2]
+        heads = int(getattr(model.config, "num_attention_heads", key.shape[1]))
+        kv_heads = int(key.shape[1])
         head_dim = int(key.shape[-1])
         layers.append(
             {
@@ -359,7 +847,7 @@ def main() -> None:
                 "label": f"layer {layer_index}",
                 "attentionHead": 0,
                 "heads": heads,
-                "kvHeads": heads,
+                "kvHeads": kv_heads,
                 "attention": attention,
                 "qkScale": round(1 / math.sqrt(head_dim), 6),
                 "hidden": tensor_stats(hidden),
@@ -381,6 +869,17 @@ def main() -> None:
                         "sample": attention[-1] if attention else [],
                     },
                 ],
+                "operators": build_exported_operators(
+                    layer_index,
+                    token_ids,
+                    previous,
+                    hidden,
+                    attention,
+                    key,
+                    value,
+                    recordings,
+                    specs_by_key,
+                ),
             }
         )
 
@@ -423,7 +922,7 @@ def main() -> None:
                 "dtype": "float32",
             },
         ],
-        "stages": default_stages("llama" in model_type.lower()),
+        "stages": default_stages(is_llama),
         "tokens": tokens,
         "layers": layers,
         "decodeSteps": decode_steps,

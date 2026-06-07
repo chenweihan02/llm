@@ -186,6 +186,40 @@ a {
   font-size: 11px;
 }
 
+.trace-import-button {
+  background: #ffffff;
+  border: 1px dashed #aeb9b6;
+  border-radius: 8px;
+  color: #2f3a3d;
+  cursor: pointer;
+  justify-content: center;
+  min-height: 34px;
+  padding: 0 9px;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.trace-import-button:hover {
+  background: #f5f8f7;
+  border-color: var(--teal);
+}
+
+.trace-import-button input {
+  display: none;
+}
+
+.trace-import-error {
+  background: #fff4ee;
+  border: 1px solid rgba(184, 82, 67, 0.26);
+  border-radius: 8px;
+  color: #7b2f21;
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 7px 8px;
+}
+
 .compact-control-block {
   gap: 8px;
   padding-top: 10px;
@@ -745,17 +779,28 @@ a {
 
 .flow-line {
   stroke: #344044;
-  stroke-width: 3.2;
+  stroke-width: 2.4;
+  opacity: 0.34;
 }
 
-.main-flow,
-.cache-flow,
+.active-flow,
 .decode-loop {
   animation: flow-dash 1.2s linear infinite;
   stroke-dasharray: 8 10;
 }
 
+.active-flow {
+  filter: drop-shadow(0 3px 6px rgba(39, 114, 113, 0.2));
+  opacity: 1;
+  stroke: #0f5e5a;
+  stroke-width: 3.2;
+}
+
 .cache-flow {
+  stroke: #8a5b2a;
+}
+
+.cache-flow.active-flow {
   stroke: #8a5b2a;
 }
 
@@ -1420,6 +1465,19 @@ a {
   top: 14px;
 }
 
+.operator-header-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.operator-title-block {
+  display: grid;
+  gap: 7px;
+}
+
 .operator-inspector h3 {
   font-size: 20px;
   line-height: 1.2;
@@ -1449,6 +1507,35 @@ a {
   justify-self: start;
   padding: 5px 9px;
   text-transform: uppercase;
+}
+
+.operator-source {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: #435053;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 820;
+  gap: 5px;
+  max-width: 260px;
+  overflow: hidden;
+  padding: 5px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.operator-source.measured {
+  background: #edf8f5;
+  border-color: rgba(39, 114, 113, 0.32);
+  color: #1f5956;
+}
+
+.operator-source.fixture {
+  background: #fff6e4;
+  border-color: rgba(165, 115, 24, 0.25);
+  color: #69490a;
 }
 
 .group-embedding {
@@ -1532,10 +1619,28 @@ a {
   text-transform: uppercase;
 }
 
+.tensor-card em {
+  color: #536064;
+  font-family:
+    "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 11px;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tensor-card strong {
   color: var(--ink);
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+.tensor-card small,
+.operator-kernel small {
+  color: #586568;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .operator-kernel .math-formula {
@@ -1558,6 +1663,70 @@ a {
   color: var(--coral);
   display: flex;
   justify-content: center;
+}
+
+.operator-watch-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.operator-watch-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.operator-watch-card > span {
+  align-items: center;
+  color: #445052;
+  display: flex;
+  font-size: 11px;
+  font-weight: 860;
+  gap: 6px;
+  text-transform: uppercase;
+}
+
+.operator-watch-card code {
+  overflow-x: auto;
+  padding: 7px 8px;
+  white-space: nowrap;
+}
+
+.operator-watch-card em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.stats-watch-card dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.stats-watch-card dl div {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.stats-watch-card dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 820;
+}
+
+.stats-watch-card dd {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 820;
+  margin: 0;
 }
 
 .auxiliary-debug-panel {

@@ -32,11 +32,37 @@ export function getInputSample(
   selectedIndex: number,
   tokenIds: number[],
 ) {
+  const selected = operators[selectedIndex];
+  if (selected?.inputSample) return selected.inputSample;
   if (selectedIndex === 0) return tokenIds.slice(0, 8);
-  return operators[selectedIndex - 1]?.sample ?? operators[selectedIndex]?.sample ?? [];
+  return (
+    operators[selectedIndex - 1]?.outputSample ??
+    operators[selectedIndex - 1]?.sample ??
+    selected?.sample ??
+    []
+  );
+}
+
+export function getOutputSample(operator: OperatorTrace | undefined) {
+  return operator?.outputSample ?? operator?.sample ?? [];
+}
+
+export function formatStats(stats: OperatorTrace["outputStats"]) {
+  if (!stats) return null;
+
+  return `mean ${formatNumber(stats.mean)} / std ${formatNumber(
+    stats.std,
+  )} / l2 ${formatNumber(stats.l2)}`;
+}
+
+export function operatorSourceLabel(operator: OperatorTrace) {
+  if (!operator.source) return "schema";
+  if (operator.source.measured) return operator.source.label;
+  return `${operator.source.label} / non-measured`;
 }
 
 export function operatorToStage(operator: OperatorTrace): StageId {
+  if (operator.stageId) return operator.stageId;
   if (operator.id.includes("position") || operator.id.includes("rope")) {
     return "position";
   }

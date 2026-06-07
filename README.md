@@ -1,6 +1,6 @@
 # 大模型推理可视化
 
-桌面版大模型推理可视化：用 trace 数据可视化 tokenization、prefill、KV cache、causal attention、residual stream、MLP、logits 与 next-token selection。
+桌面版大模型推理可视化：用 trace 数据可视化 tokenization、prefill、KV cache、causal attention、residual stream、MLP、logits、next-token selection，以及逐算子的输入/输出张量。
 
 ## GitHub Repository Description
 
@@ -8,10 +8,12 @@ Interactive LLM inference visualization trace viewer for decoder-only Transforme
 
 ## 当前阶段
 
-- 已重构为 trace-driven viewer，页面不再在浏览器里临时伪造采样流程。
-- 中心区域是可交互 Transformer 架构图，点击模块后右侧 inspector 联动展示公式、shape、stats、attention 来源和 KV cache。
+- 已重构为 trace-driven operator debugger，页面不再在浏览器里临时伪造采样流程。
+- 中心区域是可交互 Transformer 架构图，点击模块会定位到对应算子，播放算子时只高亮当前数据路径。
+- 逐算子面板展示公式、input/output shape、样本切片、读写张量、stats delta 和数据来源。
+- 左侧支持导入本地导出的真实 trace JSON；GitHub Pages 仍然只负责静态展示。
 - 内置 trace 是固定结构样例，用来验证页面和数据 schema。
-- `scripts/export_trace.py` 用于从 Hugging Face causal LM 导出真实 forward-pass 数值，再替换内置数据。
+- `scripts/export_trace.py` 用于从 Hugging Face causal LM 导出真实 forward-pass 数值和 module hook 算子记录。
 
 ## 真实数值怎么来
 
@@ -33,8 +35,11 @@ python scripts/export_trace.py --model gpt2 --prompt "The capital of France is" 
 - token ids 与 token 文本
 - selected layers 的 attention matrix
 - hidden/residual/delta statistics
+- module forward hook 捕获的算子 input/output shape、sample 和 stats
 - top logits 与 probability
 - `past_key_values` / KV cache shape
+
+导出后可以在网页左侧点击“导入真实 trace JSON”，直接加载本地 JSON 文件查看。脚本能实测的模块会标记为 `HF module hook` 或 `HF forward output`；框架没有直接暴露的中间值不会被伪造成真实值。
 
 ## 本地开发
 

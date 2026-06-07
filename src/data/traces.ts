@@ -2,6 +2,7 @@ import type {
   InferenceTrace,
   KvCacheTrace,
   OperatorTrace,
+  StageId,
   TraceLayer,
   TraceToken,
 } from "../types";
@@ -134,6 +135,52 @@ const llamaLatexByOperatorId: Record<string, string> = {
   "residual-mlp": "X_{\\ell+1} = X_1 + O_{\\mathrm{mlp}}",
   "kv-write": "\\mathrm{Cache}_{\\ell} \\leftarrow \\operatorname{append}(\\operatorname{RoPE}(K),V)",
 };
+
+function operatorStageId(operator: OperatorTrace): StageId {
+  if (operator.id.includes("position") || operator.id.includes("rope")) {
+    return "position";
+  }
+  if (
+    operator.id.includes("q-proj") ||
+    operator.id.includes("kv-proj") ||
+    operator.id.includes("qkv-proj")
+  ) {
+    return "qkv";
+  }
+  if (operator.id.includes("cache")) return "kvcache";
+  if (operator.id.includes("residual")) return "residual";
+  if (operator.group === "embedding") return "embedding";
+  if (operator.group === "attention") return "attention";
+  if (operator.group === "mlp") return "mlp";
+  if (operator.group === "output") return "logits";
+  return "attention";
+}
+
+function enrichFixtureOperators(
+  operators: OperatorTrace[],
+  latexByOperatorId: Record<string, string>,
+) {
+  return operators.map((operator, index) => ({
+    ...operator,
+    stageId: operatorStageId(operator),
+    latex: latexByOperatorId[operator.id] ?? operator.expression,
+    inputTensor: operator.inputTensor ?? `${operator.id}:input`,
+    outputTensor: operator.outputTensor ?? `${operator.id}:output`,
+    inputSample: operator.inputSample ?? operators[index - 1]?.sample,
+    outputSample: operator.outputSample ?? operator.sample,
+    reads: operator.reads ?? [`${operator.id}:input`],
+    writes: operator.writes ?? [`${operator.id}:output`],
+    source: operator.source ?? {
+      type: "fixture",
+      label: "reference fixture",
+      measured: false,
+      note: "内置结构样例用于验证交互和公式；不是模型 forward pass 导出的实测张量。",
+    },
+    debugNote:
+      operator.debugNote ??
+      "这是结构样例值。真实算子输入/输出可由 scripts/export_trace.py 导出后导入页面。",
+  }));
+}
 
 function makeGptOperators(layerIndex: number, seqLength: number): OperatorTrace[] {
   const offset = layerIndex * 0.01;
@@ -290,10 +337,7 @@ function makeGptOperators(layerIndex: number, seqLength: number): OperatorTrace[
     },
   ];
 
-  return operators.map((operator) => ({
-    ...operator,
-    latex: gptLatexByOperatorId[operator.id] ?? operator.expression,
-  }));
+  return enrichFixtureOperators(operators, gptLatexByOperatorId);
 }
 
 function makeLlamaOperators(layerIndex: number, seqLength: number): OperatorTrace[] {
@@ -461,10 +505,7 @@ function makeLlamaOperators(layerIndex: number, seqLength: number): OperatorTrac
     },
   ];
 
-  return operators.map((operator) => ({
-    ...operator,
-    latex: llamaLatexByOperatorId[operator.id] ?? operator.expression,
-  }));
+  return enrichFixtureOperators(operators, llamaLatexByOperatorId);
 }
 
 function makeGptLayer(

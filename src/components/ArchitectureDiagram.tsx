@@ -5,6 +5,7 @@ import type {
   TraceLayer,
   TraceToken,
 } from "../types";
+import { operatorToStage } from "../lib/operatorDebug";
 import { MathFormula } from "./MathFormula";
 
 type ArchitectureDiagramProps = {
@@ -15,6 +16,7 @@ type ArchitectureDiagramProps = {
   activeStageId: StageId;
   selectedOperatorIndex: number;
   onSelectStage: (stageId: StageId) => void;
+  onSelectOperator: (operatorIndex: number) => void;
 };
 
 type NodeTone = "token" | "norm" | "attention" | "mlp" | "output" | "cache";
@@ -38,6 +40,7 @@ export function ArchitectureDiagram({
   activeStageId,
   selectedOperatorIndex,
   onSelectStage,
+  onSelectOperator,
 }: ArchitectureDiagramProps) {
   const stageById = new Map(trace.stages.map((stage) => [stage.id, stage]));
   const isLlama = trace.modelProfileId === "llama-style";
@@ -48,6 +51,30 @@ export function ArchitectureDiagram({
   const activeStage = stageById.get(activeStageId) ?? trace.stages[0];
   const selectedOperator = layer.operators[selectedOperatorIndex];
   const selectedOperatorId = selectedOperator?.id ?? "";
+  const activeOperatorStage = selectedOperator
+    ? operatorToStage(selectedOperator)
+    : activeStageId;
+
+  function selectStage(stageId: StageId, operatorHints: string[] = []) {
+    onSelectStage(stageId);
+
+    const hintedIndex =
+      operatorHints.length > 0
+        ? layer.operators.findIndex((operator) =>
+            operatorHints.some((hint) => operator.id.includes(hint)),
+          )
+        : -1;
+    const stagedIndex = layer.operators.findIndex(
+      (operator) => operatorToStage(operator) === stageId,
+    );
+    const nextIndex = hintedIndex >= 0 ? hintedIndex : stagedIndex;
+
+    if (nextIndex >= 0) onSelectOperator(nextIndex);
+  }
+
+  function flowActive(...stageIds: StageId[]) {
+    return stageIds.includes(activeOperatorStage);
+  }
 
   const nodes: NodeSpec[] = [
     {
@@ -204,18 +231,18 @@ export function ArchitectureDiagram({
 
           <text className="nx-label" x="785" y="501">N x</text>
 
-          <path className="flow-line main-flow" d="M560 792 L560 773" />
-          <path className="flow-line main-flow" d="M560 715 L560 676" />
-          <path className="flow-line main-flow" d="M560 620 L560 581" />
-          <path className="flow-line main-flow" d="M560 505 L560 466" />
-          <path className="flow-line main-flow" d="M560 410 L560 372" />
-          <path className="flow-line main-flow" d="M560 306 L560 266" />
-          <path className="flow-line main-flow" d="M560 210 L560 176" />
-          <path className="flow-line main-flow" d="M560 118 L560 90" />
+          <path className={`flow-line main-flow ${flowActive("tokenize", "embedding") ? "active-flow" : ""}`} d="M560 792 L560 773" />
+          <path className={`flow-line main-flow ${flowActive("embedding", "position") ? "active-flow" : ""}`} d="M560 715 L560 676" />
+          <path className={`flow-line main-flow ${flowActive("residual", "qkv") ? "active-flow" : ""}`} d="M560 620 L560 581" />
+          <path className={`flow-line main-flow ${flowActive("attention", "kvcache") ? "active-flow" : ""}`} d="M560 505 L560 466" />
+          <path className={`flow-line main-flow ${flowActive("residual", "mlp") ? "active-flow" : ""}`} d="M560 410 L560 372" />
+          <path className={`flow-line main-flow ${flowActive("mlp") ? "active-flow" : ""}`} d="M560 306 L560 266" />
+          <path className={`flow-line main-flow ${flowActive("residual", "logits") ? "active-flow" : ""}`} d="M560 210 L560 176" />
+          <path className={`flow-line main-flow ${flowActive("logits", "sampling") ? "active-flow" : ""}`} d="M560 118 L560 90" />
 
-          <path className="flow-line side-flow" d="M370 744 L420 744" />
-          <path className="flow-line cache-flow" d="M715 542 C748 504 744 324 812 274" />
-          <path className="flow-line cache-flow reverse-flow" d="M912 288 C790 318 744 486 715 536" />
+          <path className={`flow-line side-flow ${flowActive("position") ? "active-flow" : ""}`} d="M370 744 L420 744" />
+          <path className={`flow-line cache-flow ${flowActive("kvcache") ? "active-flow" : ""}`} d="M715 542 C748 504 744 324 812 274" />
+          <path className={`flow-line cache-flow reverse-flow ${flowActive("kvcache", "attention") ? "active-flow" : ""}`} d="M912 288 C790 318 744 486 715 536" />
 
           <g className={`residual-network ${activeStageId === "residual" ? "residual-active" : ""}`}>
             <path className="residual-bypass" d="M560 696 H386 Q378 696 378 688 V494 Q378 486 386 486 H548" />
@@ -230,7 +257,7 @@ export function ArchitectureDiagram({
           <MlpDetailPanel
             activeStageId={activeStageId}
             isLlama={isLlama}
-            onSelectStage={onSelectStage}
+            onSelectStage={selectStage}
             selectedOperatorId={selectedOperatorId}
           />
 
@@ -239,7 +266,7 @@ export function ArchitectureDiagram({
             cacheShape={formatShape(layer.kvCache.keyShape)}
             cacheSize={`${decodeStep.kvCache.memoryMB.toFixed(2)} MB`}
             isLlama={isLlama}
-            onSelectStage={onSelectStage}
+            onSelectStage={selectStage}
             selectedOperatorId={selectedOperatorId}
           />
 
@@ -248,7 +275,7 @@ export function ArchitectureDiagram({
               key={`${node.id}-${node.label}-${index}`}
               node={node}
               selected={node.id === activeStageId}
-              onSelect={onSelectStage}
+              onSelect={selectStage}
             />
           ))}
 
@@ -274,7 +301,7 @@ export function ArchitectureDiagram({
               <strong>{activeStage.shape}</strong>
             </div>
             <div>
-              <span>Layer 0 operators</span>
+              <span>Current layer operators</span>
               <strong>{layer.operators.length} traced ops</strong>
             </div>
             <div>
@@ -363,7 +390,7 @@ type DetailStepSpec = {
 type DetailPanelProps = {
   activeStageId: StageId;
   isLlama: boolean;
-  onSelectStage: (stageId: StageId) => void;
+  onSelectStage: (stageId: StageId, operatorHints?: string[]) => void;
   selectedOperatorId: string;
 };
 
@@ -394,7 +421,7 @@ function AttentionDetailPanel({
       w: 106,
       h: 42,
       stageId: "qkv",
-      operatorMatches: ["q-proj", "kv-proj", "qkv-proj"],
+      operatorMatches: ["q-proj", "k-proj", "v-proj", "kv-proj", "qkv-proj"],
     },
     {
       label: isLlama ? "RoPE" : "KV write",
@@ -518,7 +545,7 @@ function MlpDetailPanel({
       w: 104,
       h: 40,
       stageId: "mlp",
-      operatorMatches: ["swiglu", "mlp-up"],
+      operatorMatches: ["swiglu", "gate-proj", "up-proj", "mlp-up"],
     },
     {
       label: isLlama ? "SiLU x Up" : "GELU",
@@ -528,7 +555,7 @@ function MlpDetailPanel({
       w: 98,
       h: 40,
       stageId: "mlp",
-      operatorMatches: ["swiglu", "mlp-up"],
+      operatorMatches: ["swiglu", "mlp-act", "gate-proj", "up-proj", "mlp-up"],
     },
     {
       label: "Down proj",
@@ -578,7 +605,7 @@ function MlpDetailPanel({
 
 type DetailStepNodeProps = {
   activeStageId: StageId;
-  onSelectStage: (stageId: StageId) => void;
+  onSelectStage: (stageId: StageId, operatorHints?: string[]) => void;
   selectedOperatorId: string;
   step: DetailStepSpec;
 };
@@ -601,10 +628,10 @@ function DetailStepNode({
       className={`detail-node ${stageRelated ? "stage-related" : ""} ${
         operatorActive ? "operator-active" : ""
       }`}
-      onClick={() => onSelectStage(step.stageId)}
+      onClick={() => onSelectStage(step.stageId, step.operatorMatches)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
-          onSelectStage(step.stageId);
+          onSelectStage(step.stageId, step.operatorMatches);
         }
       }}
       role="button"

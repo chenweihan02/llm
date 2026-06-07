@@ -1,39 +1,3 @@
-import type { LucideIcon } from "lucide-react";
-
-export type TokenKind = "han" | "latin" | "number" | "punctuation" | "symbol";
-
-export type TokenInfo = {
-  id: number;
-  text: string;
-  index: number;
-  kind: TokenKind;
-  bytes: number;
-  color: string;
-};
-
-export type TransformerStage = {
-  id: string;
-  title: string;
-  short: string;
-  detail: string;
-  formula: string;
-  latex?: string;
-  icon: LucideIcon;
-};
-
-export type Prediction = {
-  token: string;
-  probability: number;
-  note: string;
-};
-
-export type Example = {
-  id: string;
-  title: string;
-  input: string;
-  focus: string;
-};
-
 export type ModelProfile = {
   id: "gpt-style" | "llama-style" | "gpt2-small" | "tinystories-15m";
   name: string;
@@ -136,13 +100,29 @@ export type TraceLayer = {
 export type OperatorTrace = {
   id: string;
   group: "embedding" | "attention" | "mlp" | "output" | "cache";
+  stageId?: StageId;
   name: string;
   expression: string;
   latex?: string;
+  inputTensor?: string;
+  outputTensor?: string;
   inputShape: number[];
   outputShape: number[];
-  sample: number[];
+  inputSample?: number[];
+  outputSample?: number[];
+  sample?: number[];
+  inputStats?: TensorStats;
+  outputStats?: TensorStats;
+  reads?: string[];
+  writes?: string[];
+  source?: {
+    type: "fixture" | "hf-hook" | "hf-forward" | "derived";
+    label: string;
+    note: string;
+    measured: boolean;
+  };
   description: string;
+  debugNote?: string;
 };
 
 export type TopLogit = {

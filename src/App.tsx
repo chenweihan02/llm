@@ -9,10 +9,12 @@ import { TokenStrip } from "./components/TokenStrip";
 import { modelProfiles } from "./data/modelProfiles";
 import { traces } from "./data/traces";
 import { clampOperatorIndex, operatorToStage } from "./lib/operatorDebug";
-import type { StageId } from "./types";
+import type { InferenceTrace, StageId } from "./types";
 import "./style.css";
 
 export default function App() {
+  const [importedTraces, setImportedTraces] = useState<InferenceTrace[]>([]);
+  const [traceImportError, setTraceImportError] = useState("");
   const [selectedTraceId, setSelectedTraceId] = useState(traces[0].id);
   const [selectedLayerIndex, setSelectedLayerIndex] = useState(
     traces[0].layers[0].index,
@@ -25,8 +27,12 @@ export default function App() {
   const [selectedOperatorIndex, setSelectedOperatorIndex] = useState(0);
   const [isOperatorPlaying, setIsOperatorPlaying] = useState(false);
 
+  const allTraces = useMemo(
+    () => [...traces, ...importedTraces],
+    [importedTraces],
+  );
   const selectedTrace =
-    traces.find((trace) => trace.id === selectedTraceId) ?? traces[0];
+    allTraces.find((trace) => trace.id === selectedTraceId) ?? allTraces[0];
   const selectedLayer =
     selectedTrace.layers.find((layer) => layer.index === selectedLayerIndex) ??
     selectedTrace.layers[0];
@@ -114,7 +120,8 @@ export default function App() {
   }, [isOperatorPlaying, selectedLayer.operators.length]);
 
   function selectTrace(traceId: string) {
-    const nextTrace = traces.find((trace) => trace.id === traceId) ?? traces[0];
+    const nextTrace =
+      allTraces.find((trace) => trace.id === traceId) ?? allTraces[0];
     setSelectedTraceId(nextTrace.id);
     setSelectedLayerIndex(nextTrace.layers[0].index);
     setSelectedTokenPosition(nextTrace.decodeSteps[0].inputPosition);
@@ -122,6 +129,30 @@ export default function App() {
     setSelectedOperatorIndex(0);
     setIsOperatorPlaying(false);
     setActiveStageId("attention");
+  }
+
+  function importTrace(value: unknown) {
+    try {
+      const importedTrace = normalizeImportedTrace(value);
+      setImportedTraces((currentTraces) => {
+        const withoutDuplicate = currentTraces.filter(
+          (trace) => trace.id !== importedTrace.id,
+        );
+        return [...withoutDuplicate, importedTrace];
+      });
+      setTraceImportError("");
+      setSelectedTraceId(importedTrace.id);
+      setSelectedLayerIndex(importedTrace.layers[0].index);
+      setSelectedTokenPosition(importedTrace.decodeSteps[0].inputPosition);
+      setSelectedDecodeIndex(0);
+      setSelectedOperatorIndex(0);
+      setIsOperatorPlaying(false);
+      setActiveStageId("attention");
+    } catch (error) {
+      setTraceImportError(
+        error instanceof Error ? error.message : "Trace JSON 解析失败。",
+      );
+    }
   }
 
   function selectOperator(operatorIndex: number) {
@@ -134,7 +165,7 @@ export default function App() {
     <main className="app-shell">
       <div className="workspace">
         <ControlsPanel
-          traces={traces}
+          traces={allTraces}
           selectedTraceId={selectedTrace.id}
           selectedTrace={selectedTrace}
           selectedLayer={selectedLayer}
@@ -147,6 +178,8 @@ export default function App() {
           onDecodeStepChange={setSelectedDecodeIndex}
           onSelectOperator={selectOperator}
           onPlayingChange={setIsOperatorPlaying}
+          onTraceImport={importTrace}
+          traceImportError={traceImportError}
         />
 
         <div className="main-lab">
@@ -154,11 +187,12 @@ export default function App() {
             trace={selectedTrace}
             layer={selectedLayer}
             decodeStep={selectedDecodeStep}
-            selectedToken={selectedToken}
-            activeStageId={activeStageId}
-            selectedOperatorIndex={selectedOperatorIndex}
-            onSelectStage={setActiveStageId}
-          />
+          selectedToken={selectedToken}
+          activeStageId={activeStageId}
+          selectedOperatorIndex={selectedOperatorIndex}
+          onSelectStage={setActiveStageId}
+          onSelectOperator={selectOperator}
+        />
           <OperatorDebugger
             layer={selectedLayer}
             selectedOperatorIndex={selectedOperatorIndex}
@@ -200,4 +234,40 @@ export default function App() {
       </div>
     </main>
   );
+}
+
+function normalizeImportedTrace(value: unknown): InferenceTrace {
+  if (!value || typeof value !== "object") {
+    throw new Error("Trace JSON 必须是对象。");
+  }
+
+  if ("error" in value) {
+    throw new Error(String((value as { error: unknown }).error));
+  }
+
+  const trace = value as InferenceTrace;
+
+  if (!Array.isArray(trace.layers) || trace.layers.length === 0) {
+    throw new Error("Trace JSON 缺少 layers。");
+  }
+  if (!Array.isArray(trace.tokens) || trace.tokens.length === 0) {
+    throw new Error("Trace JSON 缺少 tokens。");
+  }
+  if (!Array.isArray(trace.decodeSteps) || trace.decodeSteps.length === 0) {
+    throw new Error("Trace JSON 缺少 decodeSteps。");
+  }
+  if (!Array.isArray(trace.stages) || trace.stages.length === 0) {
+    throw new Error("Trace JSON 缺少 stages。");
+  }
+
+  return {
+    ...trace,
+    id: trace.id || `imported-${Date.now()}`,
+    title: trace.title || "Imported HF trace",
+    layers: trace.layers.map((layer) => ({
+      ...layer,
+      probes: Array.isArray(layer.probes) ? layer.probes : [],
+      operators: Array.isArray(layer.operators) ? layer.operators : [],
+    })),
+  };
 }

@@ -1,13 +1,18 @@
-import { useMemo } from "react";
-import { ArrowRight } from "lucide-react";
+import { useMemo, type ReactNode } from "react";
+import { ArrowRight, Database, RadioTower, Sigma } from "lucide-react";
 import { MathFormula } from "./MathFormula";
-import type { OperatorTrace, TraceLayer, TraceToken } from "../types";
+import type { OperatorTrace, TensorStats, TraceLayer, TraceToken } from "../types";
 import {
   clampOperatorIndex,
+  formatNumber,
   formatShape,
+  formatStats,
   formatTensorSample,
   getInputSample,
+  getOutputSample,
+  operatorSourceLabel,
   operatorGroupLabels,
+  operatorToStage,
 } from "../lib/operatorDebug";
 
 type OperatorDebuggerProps = {
@@ -34,6 +39,13 @@ export function OperatorDebugger({
     boundedOperatorIndex,
     tokens.map((token) => token.id),
   );
+  const outputSample = getOutputSample(selectedOperator);
+  const inputStats = formatStats(selectedOperator?.inputStats);
+  const outputStats = formatStats(selectedOperator?.outputStats);
+  const sourceLabel = selectedOperator
+    ? operatorSourceLabel(selectedOperator)
+    : "schema";
+  const sourceMeasured = selectedOperator?.source?.measured ?? false;
 
   const groupedOperators = useMemo(() => {
     return layer.operators.reduce(
@@ -76,18 +88,22 @@ export function OperatorDebugger({
                   const globalIndex = layer.operators.findIndex(
                     (item) => item.id === operator.id,
                   );
+                  const isActive = operator.id === selectedOperator.id;
 
                   return (
                     <button
                       className={`operator-step ${
-                        operator.id === selectedOperator.id ? "active" : ""
+                        isActive ? "active" : ""
                       }`}
                       key={operator.id}
                       onClick={() => selectOperator(globalIndex)}
                     >
                       <span>{String(globalIndex + 1).padStart(2, "0")}</span>
                       <strong>{operator.name}</strong>
-                      <em>{formatShape(operator.outputShape)}</em>
+                      <em>
+                        {formatShape(operator.outputShape)} /{" "}
+                        {operatorToStage(operator)}
+                      </em>
                     </button>
                   );
                 })}
@@ -97,17 +113,32 @@ export function OperatorDebugger({
         </div>
 
         <div className="operator-inspector">
-          <span className={`operator-badge group-${selectedOperator.group}`}>
-            {operatorGroupLabels[selectedOperator.group]}
-          </span>
-          <h3>{selectedOperator.name}</h3>
-          <p>{selectedOperator.description}</p>
+          <div className="operator-header-row">
+            <span className={`operator-badge group-${selectedOperator.group}`}>
+              {operatorGroupLabels[selectedOperator.group]}
+            </span>
+            <span
+              className={`operator-source ${
+                sourceMeasured ? "measured" : "fixture"
+              }`}
+              title={selectedOperator.source?.note}
+            >
+              <RadioTower size={13} />
+              {sourceLabel}
+            </span>
+          </div>
+          <div className="operator-title-block">
+            <h3>{selectedOperator.name}</h3>
+            <p>{selectedOperator.description}</p>
+          </div>
 
           <div className="operator-dataflow">
             <div className="tensor-card">
               <span>Input tensor</span>
+              <em>{selectedOperator.inputTensor ?? "operator input"}</em>
               <strong>{formatShape(selectedOperator.inputShape)}</strong>
               <code>[{formatTensorSample(inputSample)}]</code>
+              {inputStats ? <small>{inputStats}</small> : null}
             </div>
             <b aria-label="flows to" className="dataflow-arrow">
               <ArrowRight size={16} />
@@ -119,6 +150,9 @@ export function OperatorDebugger({
                 block
                 latex={selectedOperator.latex ?? selectedOperator.expression}
               />
+              {selectedOperator.debugNote ? (
+                <small>{selectedOperator.debugNote}</small>
+              ) : null}
             </div>
 
             <b aria-label="flows to" className="dataflow-arrow">
@@ -126,12 +160,96 @@ export function OperatorDebugger({
             </b>
             <div className="tensor-card">
               <span>Output tensor</span>
+              <em>{selectedOperator.outputTensor ?? "operator output"}</em>
               <strong>{formatShape(selectedOperator.outputShape)}</strong>
-              <code>[{formatTensorSample(selectedOperator.sample)}]</code>
+              <code>[{formatTensorSample(outputSample)}]</code>
+              {outputStats ? <small>{outputStats}</small> : null}
             </div>
+          </div>
+
+          <div className="operator-watch-grid">
+            <WatchList
+              icon={<Database size={15} />}
+              items={selectedOperator.reads ?? []}
+              title="Reads"
+            />
+            <WatchList
+              icon={<ArrowRight size={15} />}
+              items={selectedOperator.writes ?? []}
+              title="Writes"
+            />
+            <StatsWatch
+              inputStats={selectedOperator.inputStats}
+              outputStats={selectedOperator.outputStats}
+            />
           </div>
         </div>
       </div>
     </section>
+  );
+}
+
+function WatchList({
+  icon,
+  items,
+  title,
+}: {
+  icon: ReactNode;
+  items: string[];
+  title: string;
+}) {
+  return (
+    <div className="operator-watch-card">
+      <span>
+        {icon}
+        {title}
+      </span>
+      {items.length > 0 ? (
+        items.map((item) => <code key={item}>{item}</code>)
+      ) : (
+        <em>none recorded</em>
+      )}
+    </div>
+  );
+}
+
+function StatsWatch({
+  inputStats,
+  outputStats,
+}: {
+  inputStats: TensorStats | undefined;
+  outputStats: TensorStats | undefined;
+}) {
+  return (
+    <div className="operator-watch-card stats-watch-card">
+      <span>
+        <Sigma size={15} />
+        Stats delta
+      </span>
+      {inputStats && outputStats ? (
+        <dl>
+          <div>
+            <dt>std</dt>
+            <dd>
+              {formatNumber(inputStats.std)} {"->"} {formatNumber(outputStats.std)}
+            </dd>
+          </div>
+          <div>
+            <dt>mean</dt>
+            <dd>
+              {formatNumber(inputStats.mean)} {"->"} {formatNumber(outputStats.mean)}
+            </dd>
+          </div>
+          <div>
+            <dt>l2</dt>
+            <dd>
+              {formatNumber(inputStats.l2)} {"->"} {formatNumber(outputStats.l2)}
+            </dd>
+          </div>
+        </dl>
+      ) : (
+        <em>stats unavailable</em>
+      )}
+    </div>
   );
 }

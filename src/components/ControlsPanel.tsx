@@ -1,4 +1,4 @@
-import { Database, FileJson, GitBranch, Layers3 } from "lucide-react";
+import { Database, FileJson, FileUp, GitBranch, Layers3 } from "lucide-react";
 import type { InferenceTrace, TraceLayer } from "../types";
 import { OperatorPlaybackBar } from "./OperatorPlaybackBar";
 
@@ -16,6 +16,8 @@ type ControlsPanelProps = {
   onDecodeStepChange: (stepIndex: number) => void;
   onSelectOperator: (operatorIndex: number) => void;
   onPlayingChange: (isPlaying: boolean) => void;
+  onTraceImport: (trace: unknown) => void;
+  traceImportError: string;
 };
 
 export function ControlsPanel({
@@ -32,7 +34,15 @@ export function ControlsPanel({
   onDecodeStepChange,
   onSelectOperator,
   onPlayingChange,
+  onTraceImport,
+  traceImportError,
 }: ControlsPanelProps) {
+  async function handleTraceFile(file: File | undefined) {
+    if (!file) return;
+    const text = await file.text();
+    onTraceImport(JSON.parse(text));
+  }
+
   return (
     <aside className="panel controls-panel compact-controls-panel">
       <div className="panel-heading">
@@ -63,6 +73,25 @@ export function ControlsPanel({
           <strong>{selectedTrace.family}</strong>
           <span>{selectedTrace.parameterScale}</span>
         </div>
+        <label className="trace-import-button">
+          <FileUp size={14} />
+          <span>导入真实 trace JSON</span>
+          <input
+            accept="application/json,.json"
+            onChange={(event) => {
+              handleTraceFile(event.currentTarget.files?.[0]).catch((error) =>
+                onTraceImport({
+                  error: error instanceof Error ? error.message : "JSON import failed",
+                }),
+              );
+              event.currentTarget.value = "";
+            }}
+            type="file"
+          />
+        </label>
+        {traceImportError ? (
+          <p className="trace-import-error">{traceImportError}</p>
+        ) : null}
       </div>
 
       <div className="control-block compact-control-block">
